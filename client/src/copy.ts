@@ -1,0 +1,31 @@
+export const copy = {
+  "onboarding.titleLabel": "Title",
+  "onboarding.start": "Start a new Book",
+  "onboarding.starting": "Starting...",
+  "onboarding.titleTooLong": "Use 200 characters or fewer.",
+  "onboarding.failed": "The Book could not be started.",
+  "onboarding.checking": "Checking whether the Book was started.",
+  "onboarding.checkAgain": "Check again",
+  "onboarding.headline": "Bring me what you have.",
+  "onboarding.privacy": "Your drafts stay in your account. Nothing is read until you send a chapter.",
+
+  "binder.reading": "Reading your chapters",
+  "binder.readFailed": "The chapters could not be read.",
+  "binder.tryAgain": "Try again",
+  "binder.addFirstScene": "Add the first scene",
+  "binder.adding": "Adding...",
+  "binder.addFailed": "The first scene could not be added.",
+  "binder.chipDraftOnly": "Draft only",
+  "binder.chipEdited": "In Book, edited since upload",
+  "binder.chapterName": (position: number, title: string | null) =>
+    title === null ? `Chapter ${position}` : `Chapter ${position}: ${title}`,
+
+  "app.opening": "Opening your Book",
+  "app.openFailed": "Your Book could not be opened.",
+  "app.tryAgain": "Try again",
+  "shell.binderDoor": "Binder",
+  "shell.binderRegion": "Binder",
+  "shell.textRegion": "Text",
+  "shell.wordmark": "Axis",
+  "shell.binderDoorHint": "Binder: Cmd/Ctrl + Shift + \\",
+};

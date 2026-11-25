@@ -1,0 +1,31 @@
+.ax-onboarding {
+  max-inline-size: var(--ax-size-onboarding);
+  margin-inline: auto;
+  padding: var(--ax-space-9) var(--ax-space-6) var(--ax-space-8);
+}
+.ax-onboarding .ax-axis-motif { margin-inline: auto; }
+.ax-onboarding [data-part="headline"] {
+  margin: var(--ax-space-6) 0 var(--ax-space-7);
+  font-size: var(--ax-type-title-l-size);
+  line-height: var(--ax-type-title-l-lh);
+  font-weight: var(--ax-type-title-l-weight);
+  letter-spacing: var(--ax-type-title-l-tracking);
+  text-align: center;
+  color: var(--ax-color-text-primary);
+}
+.ax-onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--ax-space-3);
+  margin-block-start: var(--ax-space-6);
+}
+.ax-onboarding-status { margin-block-start: var(--ax-space-5); text-align: center; }
+.ax-onboarding-privacy {
+  max-inline-size: 44ch;
+  margin: var(--ax-space-5) auto 0;
+  text-align: center;
+  font-size: var(--ax-type-small-size);
+  line-height: var(--ax-type-small-lh);
+  color: var(--ax-color-text-tertiary);
+}

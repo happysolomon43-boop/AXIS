@@ -1,0 +1,88 @@
+.ax-shell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: var(--ax-size-strip) minmax(0, 1fr);
+  block-size: 100%;
+}
+.ax-strip {
+  grid-column: 1 / -1;
+  position: relative;
+  z-index: var(--ax-z-shell);
+  display: flex;
+  align-items: center;
+  gap: var(--ax-space-3);
+  block-size: var(--ax-size-strip);
+  padding-inline: var(--ax-space-5);
+  border-block-end: 1px solid var(--ax-color-border-hair);
+  background-color: var(--ax-color-surface-shell);
+}
+.ax-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ax-type-title-size);
+  line-height: var(--ax-type-title-lh);
+  font-weight: var(--ax-type-title-weight);
+  letter-spacing: var(--ax-type-title-tracking);
+}
+.ax-door {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ax-radius-2);
+  background-color: transparent;
+  color: var(--ax-color-text-primary);
+  cursor: pointer;
+  transition: background-color var(--ax-dur-hover) var(--ax-ease-state);
+}
+.ax-door:hover { background-color: var(--ax-tint-hover); }
+.ax-door:active { background-color: var(--ax-tint-pressed); }
+.ax-door-underline {
+  position: absolute;
+  inset-inline-start: calc(50% - 10px);
+  inset-block-end: -1px;
+  inline-size: 20px;
+  block-size: 2px;
+  background-color: var(--ax-color-text-primary);
+}
+.ax-binder-region {
+  grid-column: 1;
+  grid-row: 2;
+  inline-size: var(--ax-size-binder);
+  overflow-y: auto;
+  border-inline-end: 1px solid var(--ax-color-border-hair);
+  background-color: var(--ax-color-surface-shell);
+}
+.ax-text-region {
+  grid-column: 2;
+  grid-row: 2;
+  min-inline-size: 0;
+  overflow-y: auto;
+  background-color: var(--ax-color-surface-shell);
+}
+.ax-opening {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ax-space-5);
+  max-inline-size: var(--ax-size-onboarding);
+  margin-inline: auto;
+  padding: var(--ax-space-9) var(--ax-space-6) 0;
+}
+@media (max-width: 1023px) {
+  .ax-binder-region {
+    position: fixed;
+    inset-block: var(--ax-size-strip) 0;
+    inset-inline-start: 0;
+    z-index: var(--ax-z-overlay);
+    background-color: var(--ax-color-surface-raised);
+    border-inline-end: 1px solid var(--ax-color-border-control);
+    box-shadow: var(--ax-shadow-overlay);
+  }
+}
+@media (pointer: coarse) { .ax-door { inline-size: var(--ax-size-hit-touch); } }

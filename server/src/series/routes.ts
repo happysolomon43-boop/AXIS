@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
 import { AppError } from "../errors.js";
-import { createSeriesWithFirstBook, getSeriesTree } from "./repo.js";
+import { createSeriesWithFirstBook, getSeriesTree, listSeries } from "./repo.js";
 
 type CreateSeriesBody = { title: string; book_title?: string };
 
@@ -46,6 +46,10 @@ export function registerSeriesRoutes(app: FastifyInstance, { pool }: Deps): void
       return reply.code(201).send(tree);
     },
   );
+
+  app.get("/series", async (request) => ({
+    series: await listSeries(pool, requireUser(request)),
+  }));
 
   app.get<{ Params: { id: string } }>("/series/:id", async (request) => {
     const { id } = request.params;

@@ -24,6 +24,30 @@ export type SeriesTree = { series: SeriesRow; books: BookRow[] };
 const seriesColumns = "id, owner_id, title, genre_rubric_id, foundation";
 const bookColumns = "id, series_id, title, ordinal, label, status, author_id, language";
 
+export async function listSeries(pool: Pool, ownerId: string): Promise<SeriesRow[]> {
+  const client = await pool.connect();
+  let discardClient = false;
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const { rows } = await client.query<SeriesRow>(
+      `SELECT ${seriesColumns} FROM series WHERE owner_id = $1
+       ORDER BY title COLLATE "C" ASC, id COLLATE "C" ASC`,
+      [ownerId],
+    );
+    await client.query("COMMIT");
+    return rows;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      discardClient = true;
+    }
+    throw error;
+  } finally {
+    client.release(discardClient);
+  }
+}
+
 export async function createSeriesWithFirstBook(
   pool: Pool,
   ownerId: string,
