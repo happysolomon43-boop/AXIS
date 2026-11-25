@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
 import { AppError } from "../errors.js";
-import { createChapterWithFirstVersion, findOwnedBook } from "./repo.js";
+import { createChapterWithFirstVersion, findOwnedBook, getChapterDetail } from "./repo.js";
 
 type CreateChapterBody = { content: string; source?: "draft_edit" | "import" };
 
@@ -68,4 +68,16 @@ export function registerCorpusRoutes(app: FastifyInstance, { pool }: Deps): void
       return reply.code(201).send(created);
     },
   );
+
+  app.get<{ Params: { id: string } }>("/chapters/:id(^[\\s\\S]{1,100}$)", async (request) => {
+    const ownerId = requireUser(request);
+    const { id } = request.params;
+    if (id.length > 64 || id.includes("\u0000")) {
+      throw new AppError(404, "not_found", "Chapter not found");
+    }
+
+    const detail = await getChapterDetail(pool, id, ownerId);
+    if (!detail) throw new AppError(404, "not_found", "Chapter not found");
+    return detail;
+  });
 }
