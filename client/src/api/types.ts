@@ -73,3 +73,8 @@ export type ChapterDetail = {
   scenes: SceneRow[];
 };
 export type VersionWritten = { chapter: ChapterRow; version: VersionRow; active_version_id: string | null };
+
+export type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
+export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
+export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null };
+export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number };

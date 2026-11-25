@@ -1,4 +1,4 @@
-name: D06 isolated acceptance
+name: AXIS isolated acceptance
 on:
   pull_request:
     branches: [main]
@@ -42,7 +42,7 @@ jobs:
       - name: Client typecheck
         working-directory: client
         run: npm run typecheck
-      - name: Client regression and lost Send probe
+      - name: Client regression and lost-reply probes
         working-directory: client
         run: npm test
       - name: Client production build
@@ -58,12 +58,14 @@ jobs:
         working-directory: server
         run: |
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 9
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 10
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'TRUNCATE series CASCADE'
           for f in $(find db/rollback -name '*.down.sql' | sort -r); do
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f"
           done
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 9
-      - name: Live preview proxy smoke and graceful shutdown
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 10
+      - name: D06 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d06-smoke.mjs
+      - name: D07 live preview proxy smoke and graceful shutdown
+        run: node .github/scripts/d07-smoke.mjs

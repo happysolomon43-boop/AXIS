@@ -1,0 +1,229 @@
+import { act, fireEvent } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
+import { b, c, chapterPath, detailText, reply, writtenC } from "./d06.fixtures";
+import {
+  advance, conflictEnvelope, draftHeadB, draftHeadOther, draftNone, draftPath, edit, fakeClock, mountDraft, putOk,
+} from "./draftFixtures";
+import { deferred, internalError } from "./helpers";
+
+afterEach(() => vi.useRealTimers());
+
+function unloadPrevented() {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+const expectedBlocks = [["heading", "Title"], ["paragraph", "One"], ["scene_break", ""], ["paragraph", "Two!"]];
+const edited = "# Title\n\nOne\n\n---\n\nTwo!";
+
+test("AC2 opens on a persisted head, fails on a mismatched or unreadable head, and retries the two reads", async () => {
+  const pending = deferred<ReturnType<typeof reply>>();
+  let ui = mountDraft({ draft: () => pending.promise });
+  await act(async () => {});
+  expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([["GET", chapterPath], ["GET", draftPath]]);
+  expect(ui.root).toHaveAttribute("data-state", "loading");
+  await act(async () => { pending.resolve(reply(draftHeadB)); });
+  expect(ui.root).toHaveAttribute("data-state", "unsaved");
+  expect(ui.blocks()).toEqual(expectedBlocks);
+  expect(ui.root).toHaveAttribute("data-autosave", "saved");
+  expect(ui.part("status")).toBeEmptyDOMElement();
+  expect(ui.part("save")).toHaveAttribute("aria-disabled", "false");
+  expect(ui.part("send")).toHaveAttribute("aria-disabled", "false");
+  expect(ui.onLockChange).not.toHaveBeenCalled();
+  expect(ui.onWritten).not.toHaveBeenCalled();
+  expect(ui.calls).toHaveLength(2);
+  expect(ui.part("editor")).toHaveFocus();
+  ui.unmount();
+
+  ui = mountDraft({ draft: reply({ ...draftHeadB, draft: { ...draftHeadB.draft, base_version: c } }) });
+  await ui.loaded("failed");
+  expect(ui.part("editor")).toBeNull();
+  ui.unmount();
+
+  ui = mountDraft({ chapter: reply({ ...detailText, version: null }) });
+  await ui.loaded("failed");
+  expect(ui.calls.map(({ path }) => path)).toEqual([chapterPath]);
+  ui.unmount();
+
+  ui = mountDraft({ draft: (_, n) => n === 0 ? internalError : reply(draftNone) });
+  await ui.loaded("failed");
+  fireEvent.click(ui.part("try-again"));
+  await ui.loaded();
+  expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([
+    ["GET", chapterPath], ["GET", draftPath], ["GET", chapterPath], ["GET", draftPath],
+  ]);
+  expect(ui.root).toHaveAttribute("data-autosave", "idle");
+});
+
+test("AC3 autosaves on idle, unlocks after success, observes the minimum gap, and retries failures", async () => {
+  const pending = deferred<ReturnType<typeof reply>>();
+  let ui = mountDraft({ put: (_, n) => n === 0 ? pending.promise : reply(putOk(2)) });
+  await ui.loaded();
+  fakeClock();
+  edit(ui.view());
+  expect(ui.root).toHaveAttribute("data-autosave", "pending");
+  expect(ui.root).toHaveAttribute("data-state", "unsaved");
+  expect(ui.onLockChange.mock.calls).toEqual([[true]]);
+  expect(unloadPrevented()).toBe(true);
+  expect(ui.part("status")).toHaveTextContent("Unsaved changes. Save or send before opening another chapter.");
+  await advance(1999);
+  expect(ui.puts()).toHaveLength(0);
+  await advance(1);
+  expect(ui.puts()).toHaveLength(1);
+  expect(ui.puts()[0].body).toEqual({ content: edited, base_version: b, base_revision: 0 });
+  expect(ui.root).toHaveAttribute("data-autosave", "saving");
+  expect(ui.part("editor")).toHaveAttribute("contenteditable", "true");
+  await act(async () => { pending.resolve(reply(putOk(1))); });
+  expect(ui.root).toHaveAttribute("data-autosave", "saved");
+  expect(ui.onLockChange.mock.calls).toEqual([[true], [false]]);
+  expect(unloadPrevented()).toBe(false);
+  expect(ui.part("status")).toBeEmptyDOMElement();
+  expect(ui.part("autosave")).toBeEmptyDOMElement();
+  expect(ui.calls.some(({ method }) => method === "POST")).toBe(false);
+  expect(ui.onWritten).not.toHaveBeenCalled();
+
+  await advance(100);
+  edit(ui.view(), "?");
+  await advance(4899);
+  expect(ui.puts()).toHaveLength(1);
+  await advance(1);
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: b, base_revision: 1 });
+  ui.unmount();
+  vi.useRealTimers();
+
+  ui = mountDraft({ put: (_, n) => n === 0 ? internalError : reply(putOk(n)) });
+  await ui.loaded();
+  fakeClock();
+  edit(ui.view());
+  await advance(2000);
+  expect(ui.root).toHaveAttribute("data-autosave", "failed");
+  expect(ui.part("autosave")).toHaveTextContent("The draft could not be saved.");
+  expect(ui.onLockChange.mock.calls).toEqual([[true]]);
+  await advance(29999);
+  expect(ui.puts()).toHaveLength(1);
+  await advance(1);
+  expect(ui.puts()).toHaveLength(2);
+  expect(ui.puts()[1].body).toEqual(ui.puts()[0].body);
+  expect(ui.root).toHaveAttribute("data-autosave", "saved");
+  expect(ui.part("autosave")).toBeEmptyDOMElement();
+
+  const view = ui.view();
+  const end = view.state.doc.content.size - 1;
+  act(() => view.dispatch(view.state.tr.delete(end - 1, end)));
+  expect(ui.root).toHaveAttribute("data-state", "clean");
+  expect(ui.root).toHaveAttribute("data-autosave", "pending");
+  await advance(5000);
+  expect(ui.puts()[2].body).toEqual({ content: detailText.version!.content, base_version: b, base_revision: 1 });
+  expect(ui.root).toHaveAttribute("data-autosave", "idle");
+
+  edit(view);
+  ui.unmount();
+  await advance(60000);
+  expect(ui.puts()).toHaveLength(3);
+});
+
+test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head around explicit writes", async () => {
+  const adopted = { ...draftHeadB, draft: { ...draftHeadB.draft, revision: 3 } };
+  let ui = mountDraft({
+    draft: (_, n) => reply(n === 0 ? draftNone : adopted),
+    put: (_, n) => n === 0 ? conflictEnvelope : reply(putOk(4)),
+  });
+  await ui.loaded();
+  fakeClock();
+  edit(ui.view());
+  await advance(2000);
+  expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([
+    ["GET", chapterPath], ["GET", draftPath], ["PUT", draftPath], ["GET", draftPath],
+  ]);
+  expect(ui.root).toHaveAttribute("data-autosave", "saved");
+  edit(ui.view(), "?");
+  await advance(5000);
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: b, base_revision: 3 });
+  ui.unmount();
+  vi.useRealTimers();
+
+  for (const read of [reply(draftHeadOther), internalError]) {
+    ui = mountDraft({ draft: (_, n) => n === 0 ? reply(draftNone) : read, put: conflictEnvelope });
+    await ui.loaded();
+    fakeClock();
+    edit(ui.view());
+    await advance(2000);
+    expect(ui.root).toHaveAttribute("data-autosave", "stopped");
+    await advance(60000);
+    expect(ui.puts()).toHaveLength(1);
+    expect(ui.onLockChange).toHaveBeenLastCalledWith(true);
+    ui.unmount();
+    vi.useRealTimers();
+  }
+
+  for (const action of ["save", "send"] as const) {
+    const putResponse = deferred<ReturnType<typeof reply>>();
+    const adoption = deferred<ReturnType<typeof reply>>();
+    const path = `${chapterPath}/${action === "save" ? "versions" : "send"}`;
+    ui = mountDraft({
+      draft: (_, n) => n === 0 ? reply(draftNone) : adoption.promise,
+      put: (_, n) => n === 0 ? putResponse.promise : reply(putOk(1)),
+      writes: [{ method: "POST", path, reply: reply(writtenC(action === "save" ? null : c), 201) }],
+    });
+    await ui.loaded();
+    fakeClock();
+    edit(ui.view());
+    await advance(2000);
+    fireEvent.click(ui.part(action));
+    expect(ui.calls.some(({ method }) => method === "POST")).toBe(false);
+    await act(async () => { putResponse.resolve(action === "save" ? reply(putOk(1)) : conflictEnvelope); });
+    if (action === "send") {
+      expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: draftPath });
+      expect(ui.calls.some(({ method }) => method === "POST")).toBe(false);
+      await act(async () => { adoption.resolve(reply(draftHeadB)); });
+    }
+    expect(ui.calls.filter(({ method }) => method === "POST")).toEqual([
+      expect.objectContaining({ path, body: { content: edited, parent_version: b } }),
+    ]);
+    expect(ui.root).toHaveAttribute("data-state", "clean");
+    expect(ui.root).toHaveAttribute("data-autosave", "idle");
+    edit(ui.view(), "?");
+    await advance(2000);
+    expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 });
+    ui.unmount();
+    vi.useRealTimers();
+  }
+
+  for (const put of [reply(putOk(1)), internalError]) {
+    ui = mountDraft({ put, writes: [{ method: "POST", path: `${chapterPath}/versions`, reply: internalError }] });
+    await ui.loaded();
+    fakeClock();
+    edit(ui.view());
+    await advance(2000);
+    await act(async () => { fireEvent.click(ui.part("save")); });
+    expect(ui.root).toHaveAttribute("data-state", "write-failed");
+    if (put.status === 200) expect(ui.part("only-here")).toBeNull();
+    else expect(ui.part("only-here")).toHaveTextContent("This text exists only in this window. Copy it out now");
+    ui.unmount();
+    vi.useRealTimers();
+  }
+
+  const oldPut = deferred<ReturnType<typeof reply>>();
+  const landed = { ...detailText, version: { ...writtenC(null).version, content: edited } };
+  ui = mountDraft({
+    chapter: (_, n) => n === 0 ? reply(detailText) : n === 1 ? internalError : reply(landed),
+    put: (_, n) => n === 0 ? oldPut.promise : reply(putOk(1)),
+    writes: [{ method: "POST", path: `${chapterPath}/versions`, reply: internalError }],
+  });
+  await ui.loaded();
+  fakeClock();
+  edit(ui.view());
+  await act(async () => { fireEvent.click(ui.part("save")); });
+  expect(ui.root).toHaveAttribute("data-state", "check-failed");
+  await advance(2000);
+  expect(ui.root).toHaveAttribute("data-autosave", "saving");
+  await act(async () => { fireEvent.click(ui.part("check-again")); });
+  expect(ui.root).toHaveAttribute("data-state", "clean");
+  expect(ui.onWritten).toHaveBeenCalledTimes(1);
+  await act(async () => { oldPut.resolve(conflictEnvelope); });
+  expect(ui.root).toHaveAttribute("data-autosave", "idle");
+  edit(ui.view(), "?");
+  await advance(2000);
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 });
+});

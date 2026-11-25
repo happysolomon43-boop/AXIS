@@ -7,6 +7,7 @@ import Fastify, {
 import type { Pool } from "pg";
 import { identifyRequest, registerIdentity } from "./auth.js";
 import { registerCorpusRoutes } from "./corpus/routes.js";
+import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
 import { registerSeriesRoutes } from "./series/routes.js";
 
@@ -82,5 +83,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.get("/health", async () => ({ status: "ok" }));
   registerSeriesRoutes(app, deps);
   registerCorpusRoutes(app, deps);
+  registerDraftRoutes(app, deps);
   return app;
 }

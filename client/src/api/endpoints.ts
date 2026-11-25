@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { ChapterCreated, ChapterDetail, ChapterListItem, SeriesRow, SeriesTree, VersionWritten } from "./types";
+import type { ChapterCreated, ChapterDetail, ChapterListItem, DraftDetail, DraftWritten, SeriesRow, SeriesTree, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -35,4 +35,14 @@ export function saveVersion(chapterId: string, content: string, parentVersion: s
 
 export function sendChapter(chapterId: string, content: string, parentVersion: string): Promise<VersionWritten> {
   return request("POST", `/chapters/${encodeURIComponent(chapterId)}/send`, { content, parent_version: parentVersion });
+}
+
+export function getDraft(id: string): Promise<DraftDetail> {
+  return request("GET", `/chapters/${encodeURIComponent(id)}/draft`);
+}
+
+export function putDraft(chapterId: string, content: string, baseVersion: string, baseRevision: number): Promise<DraftWritten> {
+  return request("PUT", `/chapters/${encodeURIComponent(chapterId)}/draft`, {
+    content, base_version: baseVersion, base_revision: baseRevision,
+  });
 }

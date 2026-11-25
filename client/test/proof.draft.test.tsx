@@ -5,6 +5,7 @@ import { App } from "../src/App";
 import type { VersionDetail } from "../src/api/types";
 import { chapterA as listA, chaptersPath, mockApi, seriesA, seriesPath, treeA } from "./helpers";
 import { a, b, chapterList, chapterPath, detailEmpty, hash, reply, verRow } from "./d06.fixtures";
+import { noDraftRead } from "./draftFixtures";
 
 // Observe the real Editor's ready hook without replacing any product behavior.
 const capture = vi.hoisted(() => ({ view: null as EditorView | null }));
@@ -17,6 +18,7 @@ test("AXB-0042 AC2: Send commits version and activation, loses reply and is reco
   capture.view = null;
   const versions: VersionDetail[] = [detailEmpty.version!]; const activations: string[] = [];
   const { calls } = mockApi([
+    noDraftRead,
     { method: "GET", path: seriesPath, reply: reply({ series: [seriesA] }) },
     { method: "GET", path: `${seriesPath}/${seriesA.id}`, reply: reply(treeA) },
     { method: "GET", path: chaptersPath, reply: () => chapterList([{ ...listA, version_id: versions.at(-1)!.id, active_version_id: activations.at(-1) ?? null, word_count: versions.length === 1 ? 0 : 1 }]) },

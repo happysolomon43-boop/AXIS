@@ -14,10 +14,10 @@ export class ApiError extends Error {
 
 type ErrorEnvelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 
-export async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+export async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
   const headers = { "X-Axis-User": getUserId() };
   const options: RequestInit = { method, headers };
-  if (method === "POST" && body !== undefined) {
+  if (method !== "GET" && body !== undefined) {
     options.headers = { ...headers, "Content-Type": "application/json" };
     options.body = JSON.stringify(body);
   }

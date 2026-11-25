@@ -5,6 +5,7 @@ import { Draft } from "../src/draft/Draft";
 import css from "../src/draft/draft.css?raw";
 import { deferred, internalError, mockApi } from "./helpers";
 import { c, chapterA, chapterPath, detailText, reply, writtenC } from "./d06.fixtures";
+import { noDraftRead } from "./draftFixtures";
 
 function mount() {
   const onReady = vi.fn<(view: EditorView) => void>();
@@ -25,6 +26,7 @@ function contrast(a: string, b: string) {
 test("AXB-0040 AC5 draws the sticky head, actions and exact failure banner, with design contrasts", async () => {
   const pending = deferred<ReturnType<typeof reply>>();
   mockApi([
+    noDraftRead,
     { method: "GET", path: chapterPath, reply: () => pending.promise },
     { method: "POST", path: `${chapterPath}/send`, reply: reply(writtenC(c), 201) },
   ]);
@@ -47,6 +49,7 @@ test("AXB-0040 AC5 draws the sticky head, actions and exact failure banner, with
   fireEvent.click(m.part("send")); await waitFor(() => expect(m.part("status")).toHaveAttribute("data-outcome", "sent")); assertHead(false); expect(m.part("send")).toHaveClass("ax-button--secondary"); cleanup();
   for (const state of ["write-failed", "check-failed"] as const) {
     mockApi([
+      noDraftRead,
       { method: "GET", path: chapterPath, reply: (_, n) => n === 1 && state === "check-failed" ? internalError : reply(detailText) },
       { method: "POST", path: `${chapterPath}/versions`, reply: internalError },
     ]);
