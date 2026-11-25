@@ -1,0 +1,36 @@
+.ax-history__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ax-space-3);
+  padding-inline-start: 32px;
+}
+
+.ax-history__restore {
+  min-inline-size: 22ch;
+  justify-content: center;
+  text-align: center;
+}
+
+.ax-history__restore[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ax-history__restore[aria-disabled="true"]:hover {
+  background-color: transparent;
+}
+
+.ax-history__restore[aria-disabled="true"]:active {
+  background-color: transparent;
+}
+
+.ax-history__result {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  padding-block: var(--ax-space-3);
+  background-color: var(--ax-color-surface-shell);
+  border-block-end: 1px solid var(--ax-color-border-hair);
+}

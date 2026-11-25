@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, DraftDetail, DraftWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, DraftDetail, DraftWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -53,4 +53,8 @@ export function getHistory(chapterId: string): Promise<ChapterHistory> {
 
 export function getVersion(chapterId: string, versionId: string): Promise<VersionText> {
   return request("GET", `/chapters/${encodeURIComponent(chapterId)}/versions/${encodeURIComponent(versionId)}`);
+}
+
+export function restoreVersion(chapterId: string, versionId: string): Promise<RestoreWritten> {
+  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/restore`, { version_id: versionId });
 }

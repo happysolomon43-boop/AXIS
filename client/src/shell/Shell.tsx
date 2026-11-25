@@ -5,7 +5,7 @@ import { Binder } from "../binder/Binder";
 import { copy } from "../copy";
 import { Draft } from "../draft/Draft";
 import { AxisMark, BinderGlyph } from "../glyphs";
-import { History } from "../history/History";
+import { History, type OnRestored, type RestoreOutcome } from "../history/History";
 import { Drawer } from "./Drawer";
 
 export function Shell({ tree }: { tree: SeriesTree }) {
@@ -15,20 +15,25 @@ export function Shell({ tree }: { tree: SeriesTree }) {
   const historyDoor = useRef<HTMLButtonElement>(null);
   const [locked, setLocked] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
-  const lockRef = useRef(false);
-  const openRef = useRef<string | null>(null);
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [draftEpoch, setDraftEpoch] = useState(0);
+  const lockedRef = useRef(false);
+  const openChapterIdRef = useRef<string | null>(null);
 
   const onLockChange = useCallback((value: boolean) => {
-    lockRef.current = value;
+    lockedRef.current = value;
     setLocked(value);
   }, []);
   const onOpenChapter = useCallback((id: string) => {
-    if (lockRef.current || openRef.current === id) return;
-    openRef.current = id;
+    if (lockedRef.current || openChapterIdRef.current === id) return;
+    openChapterIdRef.current = id;
     setOpenChapterId(id);
     onLockChange(false);
   }, [onLockChange]);
-  const onWritten = useCallback(() => setRefreshToken((token) => token + 1), []);
+  const onWritten = useCallback(() => {
+    setRefreshToken((token) => token + 1);
+    setHistoryRefreshToken((token) => token + 1);
+  }, []);
   const current = useRef(true);
   const door = useRef<HTMLButtonElement>(null);
   const binder = useRef<HTMLElement>(null);
@@ -45,6 +50,17 @@ export function Shell({ tree }: { tree: SeriesTree }) {
   function closeHistory() {
     setHistoryOpen(false);
     historyDoor.current?.focus();
+  }
+
+  function handleRestored(chapterId: string, _outcome: RestoreOutcome): ReturnType<OnRestored> {
+    setRefreshToken((token) => token + 1);
+    if (openChapterIdRef.current !== chapterId) return "kept";
+    setHistoryRefreshToken((token) => token + 1);
+    if (lockedRef.current) return "kept";
+
+    setDraftEpoch((epoch) => epoch + 1);
+    onLockChange(false);
+    return "applied";
   }
 
   useEffect(() => {
@@ -93,11 +109,12 @@ export function Shell({ tree }: { tree: SeriesTree }) {
         <Binder tree={tree} openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} refreshToken={refreshToken} />
       </aside>
       <main className="ax-text-region" data-region="text" aria-label={copy["shell.textRegion"]}>
-        {openChapterId !== null && <Draft key={openChapterId} chapterId={openChapterId} onLockChange={onLockChange} onWritten={onWritten} />}
+        {openChapterId !== null && <Draft key={`${openChapterId}:${draftEpoch}`} chapterId={openChapterId} onLockChange={onLockChange} onWritten={onWritten} />}
       </main>
       {historyOpen && openChapterId !== null &&
         <Drawer title={copy["history.title"]} onClose={closeHistory}>
-          <History key={openChapterId} chapterId={openChapterId} refreshToken={refreshToken} />
+          <History key={openChapterId} chapterId={openChapterId} refreshToken={historyRefreshToken} locked={locked}
+            onRestored={(outcome) => handleRestored(openChapterId, outcome)} />
         </Drawer>}
     </div>
   );

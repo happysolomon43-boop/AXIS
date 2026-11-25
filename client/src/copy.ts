@@ -80,4 +80,11 @@ export const copy = {
   "history.versionTryAgain": "Try again",
   "history.noText": "This version has no text.",
   "history.inBook": "In Book",
+  "history.restored": "Restored into your draft. The Book is unchanged until you send.",
+  "history.restore": "Restore this version",
+  "history.restoring": "Restoring...",
+  "history.restoreFailed": "The version could not be restored.",
+  "history.restoreBlocked": "Finish saving this chapter before restoring a version.",
+  "history.restoredKept": "Restored as a new version. The text in your draft was not replaced.",
+  "history.checkpointNote": "Your earlier unsaved text was kept as a checkpoint.",
 };
