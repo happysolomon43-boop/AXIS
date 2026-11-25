@@ -1,0 +1,73 @@
+name: D06 isolated acceptance
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [d06-verification]
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: axis
+          POSTGRES_PASSWORD: axis_test_only
+          POSTGRES_DB: axis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U axis -d axis_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      AXIS_TEST_DATABASE_URL: postgresql://axis:axis_test_only@localhost:5432/axis_test
+      DATABASE_URL: postgresql://axis:axis_test_only@localhost:5432/axis_test
+      VITE_AXIS_USER: usr_alice
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install client and generate lockfile
+        working-directory: client
+        run: npm install --no-audit --no-fund
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d06-client-lock
+          path: client/package-lock.json
+      - name: Install server
+        working-directory: server
+        run: npm ci --no-audit --no-fund
+      - name: Client typecheck
+        working-directory: client
+        run: npm run typecheck
+      - name: Client regression and lost Send probe
+        working-directory: client
+        run: npm test
+      - name: Client production build
+        working-directory: client
+        run: npm run build
+      - name: Server regression and earlier probes
+        working-directory: server
+        run: npm test
+      - name: Server build
+        working-directory: server
+        run: npm run build
+      - name: Migration verification and isolated rollback
+        working-directory: server
+        run: |
+          npm run migrate
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 9
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'TRUNCATE series CASCADE'
+          for f in $(find db/rollback -name '*.down.sql' | sort -r); do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f"
+          done
+          npm run migrate
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 9
+      - name: Live preview proxy smoke and graceful shutdown
+        run: node .github/scripts/d06-smoke.mjs
