@@ -3,7 +3,10 @@ import { useEffect, useRef } from "react";
 import type { SeriesTree } from "../api/types";
 import { BookGroup } from "./BookGroup";
 
-export function Binder({ tree }: { tree: SeriesTree }) {
+export function Binder({ tree, openChapterId = null, locked = false, onOpenChapter, refreshToken = 0 }: {
+  tree: SeriesTree; openChapterId?: string | null; locked?: boolean;
+  onOpenChapter?: (chapterId: string) => void; refreshToken?: number;
+}) {
   const refreshers = useRef(new Set<() => void>()).current;
 
   useEffect(() => {
@@ -19,7 +22,8 @@ export function Binder({ tree }: { tree: SeriesTree }) {
       <p className="ax-binder-title" data-part="series-title">{tree.series.title}</p>
       <ul className="ax-binder-books" data-part="books">
         {tree.books.map((book, index) => (
-          <BookGroup key={book.id} book={book} initiallyExpanded={index === 0} refreshers={refreshers} />
+          <BookGroup key={book.id} book={book} initiallyExpanded={index === 0} refreshers={refreshers}
+            openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} refreshToken={refreshToken} />
         ))}
       </ul>
     </div>

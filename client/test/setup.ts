@@ -14,3 +14,15 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
+
+Range.prototype.getBoundingClientRect = function () {
+  const rect: DOMRect = {
+    x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0,
+    toJSON: () => rect,
+  };
+  return rect;
+};
+Range.prototype.getClientRects = function () {
+  return { length: 0, item: () => null, *[Symbol.iterator]() {} } as DOMRectList;
+};
+document.elementFromPoint = () => null;

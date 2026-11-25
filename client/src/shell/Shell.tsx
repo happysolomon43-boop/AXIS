@@ -3,10 +3,28 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { SeriesTree } from "../api/types";
 import { Binder } from "../binder/Binder";
 import { copy } from "../copy";
+import { Draft } from "../draft/Draft";
 import { AxisMark, BinderGlyph } from "../glyphs";
 
 export function Shell({ tree }: { tree: SeriesTree }) {
   const [shown, setShown] = useState(true);
+  const [openChapterId, setOpenChapterId] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const lockRef = useRef(false);
+  const openRef = useRef<string | null>(null);
+
+  const onLockChange = useCallback((value: boolean) => {
+    lockRef.current = value;
+    setLocked(value);
+  }, []);
+  const onOpenChapter = useCallback((id: string) => {
+    if (lockRef.current || openRef.current === id) return;
+    openRef.current = id;
+    setOpenChapterId(id);
+    onLockChange(false);
+  }, [onLockChange]);
+  const onWritten = useCallback(() => setRefreshToken((token) => token + 1), []);
   const current = useRef(true);
   const door = useRef<HTMLButtonElement>(null);
   const binder = useRef<HTMLElement>(null);
@@ -55,9 +73,11 @@ export function Shell({ tree }: { tree: SeriesTree }) {
       </header>
       <aside className="ax-binder-region" data-region="binder" aria-label={copy["shell.binderRegion"]}
         id={binderId} ref={binder} hidden={!shown}>
-        <Binder tree={tree} />
+        <Binder tree={tree} openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} refreshToken={refreshToken} />
       </aside>
-      <main className="ax-text-region" data-region="text" aria-label={copy["shell.textRegion"]} />
+      <main className="ax-text-region" data-region="text" aria-label={copy["shell.textRegion"]}>
+        {openChapterId !== null && <Draft key={openChapterId} chapterId={openChapterId} onLockChange={onLockChange} onWritten={onWritten} />}
+      </main>
     </div>
   );
 }

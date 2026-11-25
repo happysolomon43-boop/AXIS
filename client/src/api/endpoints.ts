@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { ChapterCreated, ChapterListItem, SeriesRow, SeriesTree } from "./types";
+import type { ChapterCreated, ChapterDetail, ChapterListItem, SeriesRow, SeriesTree, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -23,4 +23,16 @@ export async function listBookChapters(bookId: string): Promise<ChapterListItem[
 
 export function createChapter(bookId: string, content: string): Promise<ChapterCreated> {
   return request("POST", `/books/${encodeURIComponent(bookId)}/chapters`, { content });
+}
+
+export function getChapter(id: string): Promise<ChapterDetail> {
+  return request("GET", `/chapters/${encodeURIComponent(id)}`);
+}
+
+export function saveVersion(chapterId: string, content: string, parentVersion: string): Promise<VersionWritten> {
+  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/versions`, { content, parent_version: parentVersion });
+}
+
+export function sendChapter(chapterId: string, content: string, parentVersion: string): Promise<VersionWritten> {
+  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/send`, { content, parent_version: parentVersion });
 }

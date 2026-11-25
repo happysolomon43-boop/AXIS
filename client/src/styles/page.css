@@ -1,0 +1,92 @@
+:root {
+  --ax-size-leaf-pad: 48px;
+  --ax-size-banner: 40px;
+}
+
+.ax-leaf[data-profile="literary"] {
+  --ax-page-size: 19px;
+  --ax-page-lh: 1.55;
+  --ax-page-weight: 400;
+  --ax-page-tracking: 0;
+  --ax-page-measure: 30em;
+  --ax-page-indent: 1.4em;
+  --ax-page-gap: 0;
+  --ax-page-break-space: 1.55em;
+  --ax-page-family: "Newsreader", Georgia, serif;
+}
+
+.ax-leaf[data-profile="literary"][data-theme="light"] {
+  --ax-page-paper: #F8F8F6;
+  --ax-page-ink: #1E1F21;
+}
+
+.ax-leaf[data-profile="literary"][data-theme="dark"] {
+  --ax-page-paper: #17181A;
+  --ax-page-ink: #D4D0C6;
+  --ax-page-lh: 1.60;
+  --ax-page-weight: 380;
+  --ax-page-tracking: 0.01em;
+}
+
+.ax-leaf[data-profile="literary"][data-theme="sepia"] {
+  --ax-page-paper: #EDE3CE;
+  --ax-page-ink: #382F24;
+}
+
+.ax-leaf[data-profile="modern"] {
+  --ax-page-size: 17px;
+  --ax-page-lh: 1.75;
+  --ax-page-weight: 400;
+  --ax-page-tracking: 0;
+  --ax-page-measure: 28em;
+  --ax-page-indent: 0;
+  --ax-page-gap: 0.7em;
+  --ax-page-break-space: 1.75em;
+  --ax-page-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+
+.ax-leaf[data-profile="modern"][data-theme="light"] {
+  --ax-page-paper: #FCFCFD;
+  --ax-page-ink: #17191C;
+}
+
+.ax-leaf[data-profile="modern"][data-theme="dark"] {
+  --ax-page-paper: #0F1113;
+  --ax-page-ink: #DDE0E3;
+  --ax-page-lh: 1.80;
+  --ax-page-tracking: 0.01em;
+}
+
+.ax-leaf[data-profile="modern"][data-theme="sepia"] {
+  --ax-page-paper: #F0E6D6;
+  --ax-page-ink: #33291F;
+}
+
+.ax-leaf[data-profile="warm"] {
+  --ax-page-size: 19px;
+  --ax-page-lh: 1.62;
+  --ax-page-weight: 400;
+  --ax-page-tracking: 0;
+  --ax-page-measure: 34em;
+  --ax-page-indent: 0;
+  --ax-page-gap: 1em;
+  --ax-page-break-space: 2.4em;
+  --ax-page-family: "Literata", Georgia, serif;
+}
+
+.ax-leaf[data-profile="warm"][data-theme="light"] {
+  --ax-page-paper: #FBF8F2;
+  --ax-page-ink: #2A2622;
+}
+
+.ax-leaf[data-profile="warm"][data-theme="dark"] {
+  --ax-page-paper: #1C1916;
+  --ax-page-ink: #E0D6C6;
+  --ax-page-lh: 1.67;
+  --ax-page-weight: 380;
+}
+
+.ax-leaf[data-profile="warm"][data-theme="sepia"] {
+  --ax-page-paper: #E9DCC1;
+  --ax-page-ink: #2F261B;
+}

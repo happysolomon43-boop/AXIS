@@ -9,7 +9,7 @@ export function chapterRowName(position: number, title: string | null): string {
   return copy["binder.chapterName"](position, title);
 }
 
-export function versionChip(item: ChapterListItem): string | null {
+export function versionChip(item: Pick<ChapterListItem, "version_id" | "active_version_id">): string | null {
   if (item.active_version_id === null) return copy["binder.chipDraftOnly"];
   if (item.active_version_id === item.version_id) return null;
   return copy["binder.chipEdited"];

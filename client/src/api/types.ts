@@ -44,3 +44,32 @@ export type ChapterListItem = ChapterRow & {
   version_id: string | null;
   active_version_id: string | null;
 };
+
+export type BlockRow = {
+  block_uid: string;
+  ordinal: number;
+  kind: "paragraph" | "heading" | "scene_break";
+  text: string;
+  hash: string;
+};
+
+export type SceneRow = {
+  ordinal: number;
+  fingerprint: string;
+  first_block: number;
+  last_block: number;
+  pov_hint: string | null;
+  location_hint: string | null;
+  time_hint: string | null;
+  time_mode: "linear" | "flashback" | "skip" | "loop";
+};
+
+export type VersionDetail = VersionRow & { content: string };
+export type ChapterDetail = {
+  chapter: ChapterRow;
+  version: VersionDetail | null;
+  active_version_id: string | null;
+  blocks: BlockRow[];
+  scenes: SceneRow[];
+};
+export type VersionWritten = { chapter: ChapterRow; version: VersionRow; active_version_id: string | null };
