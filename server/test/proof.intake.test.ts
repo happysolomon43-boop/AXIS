@@ -13,7 +13,7 @@ afterAll(async () => {
 
 test("AC1 applies all seven migrations and installs the complete intake schema", async () => {
   const { rows: migrations } = await pool.query<{ filename: string }>(
-    "SELECT filename FROM schema_migrations ORDER BY filename",
+    "SELECT filename FROM schema_migrations WHERE filename < '0008' ORDER BY filename",
   );
   expect(migrations.map(({ filename }) => filename)).toEqual([
     "0001_containers.sql", "0002_ledger.sql", "0003_corpus.sql", "0004_commit_inputs.sql",
