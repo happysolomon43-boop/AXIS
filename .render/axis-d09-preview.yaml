@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: axis-d09-preview
+    runtime: node
+    repo: https://github.com/happysolomon43-boop/AXIS
+    branch: axis-d09-preview
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: "off"
+    healthCheckPath: /health
+    buildCommand: >-
+      npm ci --prefix server --include=dev --no-audit --no-fund &&
+      npm run build --prefix server &&
+      npm ci --prefix client --include=dev --no-audit --no-fund &&
+      npm run build --prefix client
+    startCommand: node server/scripts/preview.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: "20.20.2"
+      - key: VITE_AXIS_USER
+        value: usr_alice
+      - key: AXIS_PREVIEW_PASSWORD
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: axis-d09-preview-db
+          property: connectionString
