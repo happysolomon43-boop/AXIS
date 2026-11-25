@@ -33,16 +33,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install client and generate lockfile
+      - name: Install client from committed lockfile
         working-directory: client
-        run: |
-          npm install --no-audit --no-fund
-          git diff -- package-lock.json
-          npm ci --no-audit --no-fund
-      - uses: actions/upload-artifact@v4
-        with:
-          name: d06-client-lock
-          path: client/package-lock.json
+        run: npm ci --no-audit --no-fund
       - name: Install server
         working-directory: server
         run: npm ci --no-audit --no-fund
@@ -55,12 +48,12 @@ jobs:
       - name: Client production build
         working-directory: client
         run: npm run build
-      - name: Server regression and earlier probes
-        working-directory: server
-        run: npm test
       - name: Server build
         working-directory: server
         run: npm run build
+      - name: Server regression and earlier probes
+        working-directory: server
+        run: npm test
       - name: Migration verification and isolated rollback
         working-directory: server
         run: |
