@@ -78,3 +78,8 @@ export type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
 export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null };
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number };
+
+export type VersionBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
+export type VersionText = { chapter: ChapterRow; version: VersionRow; blocks: VersionBlock[] };
+export type HistoryItem = VersionRow & { at: string; word_count: number };
+export type ChapterHistory = { chapter: ChapterRow; active_version_id: string | null; versions: HistoryItem[] };

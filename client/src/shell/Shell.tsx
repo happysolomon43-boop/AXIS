@@ -5,10 +5,14 @@ import { Binder } from "../binder/Binder";
 import { copy } from "../copy";
 import { Draft } from "../draft/Draft";
 import { AxisMark, BinderGlyph } from "../glyphs";
+import { History } from "../history/History";
+import { Drawer } from "./Drawer";
 
 export function Shell({ tree }: { tree: SeriesTree }) {
   const [shown, setShown] = useState(true);
   const [openChapterId, setOpenChapterId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyDoor = useRef<HTMLButtonElement>(null);
   const [locked, setLocked] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const lockRef = useRef(false);
@@ -37,6 +41,11 @@ export function Shell({ tree }: { tree: SeriesTree }) {
     }
     setShown(current.current);
   }, []);
+
+  function closeHistory() {
+    setHistoryOpen(false);
+    historyDoor.current?.focus();
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -70,6 +79,14 @@ export function Shell({ tree }: { tree: SeriesTree }) {
           <BinderGlyph />
           {shown && <span className="ax-door-underline" data-part="door-underline" aria-hidden="true" />}
         </button>
+        {openChapterId !== null && <button ref={historyDoor} type="button" className="ax-history-door" data-part="history-door"
+          aria-expanded={historyOpen} onClick={() => {
+            if (historyOpen) closeHistory();
+            else setHistoryOpen(true);
+          }}>
+          {copy["shell.historyDoor"]}
+          {historyOpen && <span className="ax-history-door__underline" data-part="history-door-underline" aria-hidden="true" />}
+        </button>}
       </header>
       <aside className="ax-binder-region" data-region="binder" aria-label={copy["shell.binderRegion"]}
         id={binderId} ref={binder} hidden={!shown}>
@@ -78,6 +95,10 @@ export function Shell({ tree }: { tree: SeriesTree }) {
       <main className="ax-text-region" data-region="text" aria-label={copy["shell.textRegion"]}>
         {openChapterId !== null && <Draft key={openChapterId} chapterId={openChapterId} onLockChange={onLockChange} onWritten={onWritten} />}
       </main>
+      {historyOpen && openChapterId !== null &&
+        <Drawer title={copy["history.title"]} onClose={closeHistory}>
+          <History key={openChapterId} chapterId={openChapterId} refreshToken={refreshToken} />
+        </Drawer>}
     </div>
   );
 }

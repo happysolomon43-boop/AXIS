@@ -69,3 +69,5 @@ jobs:
         run: node .github/scripts/d06-smoke.mjs
       - name: D07 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d07-smoke.mjs
+      - name: D08 live preview proxy smoke and graceful shutdown
+        run: node .github/scripts/d08-smoke.mjs

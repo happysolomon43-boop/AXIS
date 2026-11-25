@@ -10,6 +10,7 @@ import { registerCorpusRoutes } from "./corpus/routes.js";
 import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
 import { registerSeriesRoutes } from "./series/routes.js";
+import { registerVersionRoutes } from "./versions/routes.js";
 
 export type Deps = { pool: Pool };
 
@@ -84,5 +85,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerSeriesRoutes(app, deps);
   registerCorpusRoutes(app, deps);
   registerDraftRoutes(app, deps);
+  registerVersionRoutes(app, deps);
   return app;
 }
