@@ -35,7 +35,10 @@ jobs:
           node-version: '20'
       - name: Install client and generate lockfile
         working-directory: client
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          git diff -- package-lock.json
+          npm ci --no-audit --no-fund
       - uses: actions/upload-artifact@v4
         with:
           name: d06-client-lock

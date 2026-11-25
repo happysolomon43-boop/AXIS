@@ -10,7 +10,7 @@ function mount() {
   const onReady = vi.fn<(view: EditorView) => void>();
   const { container } = render(<Draft chapterId={chapterA.id} onLockChange={vi.fn()} onWritten={vi.fn()} onEditorReady={onReady} />);
   const root = container.querySelector('[data-surface="draft"]')!;
-  return { root, part: (name: string) => root.querySelector(`[data-part="${name}"]`)!, edit: () => {
+  return { root, part: (name: string) => root.querySelector<HTMLElement>(`[data-part="${name}"]`)!, edit: () => {
     const view = onReady.mock.calls[0][0]; act(() => view.dispatch(view.state.tr.insertText("!", view.state.doc.content.size - 1)));
   } };
 }
