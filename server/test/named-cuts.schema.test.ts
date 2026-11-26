@@ -20,13 +20,13 @@ test("AXB-0091 AC1 down and reapply preserve predecessor data in one isolated tr
       await client.query("BEGIN");
       const migrationRows = async () => (await client.query("SELECT filename FROM schema_migrations ORDER BY filename")).rows;
       const original = await migrationRows();
-      expect(original).toHaveLength(12);
+      expect(original).toHaveLength(13);
       const definitions = async () => (await client.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='named_cuts'::regclass ORDER BY definition")).rows;
       const expected = await definitions();
       const reapply = async () => { await client.query(up); await client.query("INSERT INTO schema_migrations(filename) VALUES($1)", [filename]); };
       const checkDown = async () => {
         expect((await client.query("SELECT to_regclass('named_cuts') AS name")).rows).toEqual([{ name: null }]);
-        expect(await migrationRows()).toEqual(original.slice(0, 11));
+        expect(await migrationRows()).toEqual(original.filter(row=>row.filename!==filename));
         expect((await client.query("SELECT id FROM chapter_versions WHERE id=$1", [saved.version.id])).rowCount).toBe(1);
         expect((await client.query("SELECT l_seq FROM ledger WHERE series_id=$1 AND l_seq=$2", [f.seriesId, saved.version.l_seq])).rowCount).toBe(1);
       };
