@@ -1,6 +1,7 @@
 import "./history.css";
 import "./restore.css";
 import "./snapshots.css";
+import "./snapshot-lifecycle.css";
 import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { getHistory, getVersion, restoreVersion, nameSnapshot, validNamedSnapshot, changeSnapshotLabel, validSnapshotLifecycle } from "../api/endpoints";
 import type { ChapterHistory, HistoryItem, NamedSnapshot, VersionText, SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult } from "../api/types";
