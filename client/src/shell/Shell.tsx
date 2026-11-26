@@ -75,6 +75,7 @@ export function Shell({ tree }: { tree: SeriesTree }) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (event.code === "KeyS" && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey)) event.preventDefault();
       if (event.code === "Backslash" && event.shiftKey && (event.ctrlKey || event.metaKey) && !event.altKey) {
         event.preventDefault();
         toggleBinder();
