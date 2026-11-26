@@ -51,3 +51,19 @@ test("AXB-0101 AC2 identity, chapter scope, UUID, route limit, and failed read",
   await pool.query("DELETE FROM named_cuts WHERE chapter_id=$1",[id]);
   const broken=await read(id,request_id);expect(broken.statusCode).toBe(500);expect(broken.json()).toEqual({error:{code:"internal",message:"Internal error",details:null}});
 });
+
+test("D15: receipt readback distinguishes deliberate removal from inconsistent live binding",async()=>{
+  const {id,request_id,capture}=await committed();
+  const v=capture.version.id;
+  const row=(await f.history(id)).json().versions.find((item:{id:string})=>item.id===v);
+  const url="/chapters/"+id+"/versions/"+v+"/snapshot-label";
+  const removed=await f.app.inject({method:"POST",url,headers:alice,payload:{action:"remove",snapshot_id:row.snapshot_lifecycle.snapshot_id,expected_token:row.snapshot_lifecycle.state_token}});
+  expect(removed.statusCode).toBe(200);
+  const absent=await read(id,request_id);
+  expect(absent.statusCode).toBe(409);expect(absent.json()).toEqual({error:{code:"snapshot_conflict",message:"Snapshot name was removed",details:{reason:"snapshot_removed"}}});
+  const undo=await f.app.inject({method:"POST",url,headers:alice,payload:{action:"undo",snapshot_id:row.snapshot_lifecycle.snapshot_id,expected_token:removed.json().snapshot_lifecycle.state_token,name:capture.snapshot.name}});
+  expect(undo.statusCode).toBe(200);
+  expect((await read(id,request_id)).json()).toEqual({capture});
+  await pool.query("DELETE FROM snapshot_label_lifecycles WHERE chapter_id=$1 AND version_id=$2",[id,v]);
+  const inconsistent=await read(id,request_id);expect(inconsistent.statusCode).toBe(500);expect(inconsistent.json()).toEqual({error:{code:"internal",message:"Internal error",details:null}});
+});

@@ -230,14 +230,14 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   }
   function setHistory(history:ChapterHistory) {
     setList(previous=>({state:"ready",history:carryNames(previous,history),refreshFailed:false}));
-    setSelection(previous=>previous&&history.versions.some(row=>row.id===previous.id&&(filterRef.current==="all"||!!savedSnapshot(row)))?previous:null);
+    setSelection(previous=>previous&&history.versions.some(row=>row.id===previous.id&&(filterRef.current==="all"||row.snapshot_lifecycle===undefined||!!savedSnapshot(row)))?previous:null);
   }
   function currentUndo(history:ChapterHistory,undo:Undo|null):Undo|null {
     if(!undo)return null;
     const row=history.versions.find(v=>v.id===undo.original.version_id&&v.chapter_id===initialChapter);
     if(!row||row.snapshot_lifecycle===undefined)return undo;
     const m=usableMarker(row);
-    if(!m)return undo;
+    if(!m)return row.snapshot_lifecycle===null&&row.snapshot===null?null:undo;
     return row.snapshot===null&&m.snapshot_id===undo.marker.snapshot_id&&m.state_token===undo.marker.state_token?undo:null;
   }
   function rememberFocus(part:string,id?:string) {
@@ -336,7 +336,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     }
     if (!readGuard(read,generation)||labelPending()) return;
     acceptedRead.current=read;
-    if(history.chapter.id!==initialChapter){setList(previous=>previous.state==="ready"?{...previous,refreshFailed:true}:{state:"failed"});return;}
+    if(!history||history.chapter?.id!==initialChapter||!Array.isArray(history.versions)){if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt)uncertain(labelRef.current.attempt);else setList(previous=>previous.state==="ready"?{...previous,refreshFailed:true}:{state:"failed"});return;}
     if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt){adjudicate(labelRef.current.attempt,history);return;}
     setHistory(history);
     const undo=currentUndo(history,labelRef.current.undo);

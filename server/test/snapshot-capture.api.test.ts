@@ -152,3 +152,25 @@ test("AXB-0100 AC5 replay preserves original result, returns live comparison and
   try { const r=await post(id,{...input,name:"Other private label"});expect(r.statusCode).toBe(409);expect(logger).not.toHaveBeenCalled(); }
   finally {logger.mockRestore();}
 });
+
+test("D15: D14 reuse binds a D13 label to its original lifecycle identity",async()=>{
+  const a=await f.create(),id=a.chapter.id;
+  const b=await f.write(id,"The bell rang.");
+  const named=await f.name(id,b.version.id,"Before the bell");
+  expect(named.statusCode).toBe(201);
+  const initial=(await f.history(id)).json().versions.find((v:{id:string})=>v.id===b.version.id);
+  const input=body(b.version.id,"The bell rang.",0,"Before the bell");
+  const captured=await post(id,input);
+  expect(captured.statusCode,captured.body).toBe(201);
+  expect(result(captured).snapshot).toEqual(initial.snapshot);
+  expect((await receipts())[0].snapshot_id).toBe(initial.snapshot_lifecycle.snapshot_id);
+  const url="/chapters/"+id+"/versions/"+b.version.id+"/snapshot-label";
+  const removed=await f.app.inject({method:"POST",url,headers:alice,payload:{action:"remove",snapshot_id:initial.snapshot_lifecycle.snapshot_id,expected_token:initial.snapshot_lifecycle.state_token}});
+  expect(removed.statusCode).toBe(200);
+  const replay=await post(id,input);
+  expect(replay.statusCode).toBe(409);expect(replay.json()).toEqual(snapshotConflict("snapshot_removed","Snapshot name was removed"));
+  expect((await post(id,{...input,content:"Mismatch"})).json()).toEqual(snapshotConflict("request_mismatch","Snapshot request ID already used"));
+  const undo=await f.app.inject({method:"POST",url,headers:alice,payload:{action:"undo",snapshot_id:initial.snapshot_lifecycle.snapshot_id,expected_token:removed.json().snapshot_lifecycle.state_token,name:initial.snapshot.name}});
+  expect(undo.statusCode).toBe(200);
+  const restored=await post(id,input);expect(restored.statusCode).toBe(200);expect(restored.json()).toEqual(captured.json());
+});
