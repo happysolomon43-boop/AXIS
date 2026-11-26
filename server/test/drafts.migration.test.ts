@@ -81,6 +81,6 @@ test("AC2 clears only the version writer's head, supports reset, and rolls back 
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([]);
   await rollbackAll(pool);
   await expectReapplyAll(pool);
-  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows).toEqual([{ count: 13 }]);
+  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows).toEqual([{ count: 14 }]);
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([]);
 });

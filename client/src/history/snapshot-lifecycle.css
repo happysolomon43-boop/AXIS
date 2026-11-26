@@ -1,0 +1,117 @@
+[data-surface="history"] .ax-history__snapshot-lifecycle {
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ax-space-3);
+  background-color: var(--ax-color-surface-shell);
+  padding-block: var(--ax-space-3);
+  padding-inline: var(--ax-space-2);
+  border-block-end: 1px solid var(--ax-color-border-hair);
+}
+[data-surface="history"] .ax-history__snapshot-lifecycle:not(:has(> :not(:empty), > button)) {
+  padding: 0;
+  border: 0;
+  margin-block-end: calc(-1 * var(--ax-space-4));
+  gap: 0;
+}
+[data-surface="history"] .ax-history__snapshot-lifecycle .ax-history__result {
+  position: static;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--ax-type-family-chrome);
+  font-size: .875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--ax-color-text-primary);
+}
+[data-surface="history"] .ax-history__snapshot-lifecycle [data-part="snapshot-lifecycle-status"]:empty {
+  block-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-block-size: 0;
+}
+[data-surface="history"] .ax-history__snapshot-lifecycle [data-part="snapshot-lifecycle-status"]:empty + * {
+  margin-block-start: calc(-1 * var(--ax-space-3));
+}
+[data-surface="history"] .ax-history__snapshot-check-rule {
+  display: block;
+  align-self: stretch;
+  border-block-start: 1px dashed var(--ax-color-border-control);
+  margin-block-start: calc(-1 * var(--ax-space-2));
+  block-size: 0;
+}
+[data-surface="history"] .ax-history__lifecycle-action {
+  display: inline-flex;
+  align-self: flex-start;
+  justify-content: flex-start;
+  text-align: start;
+  inline-size: fit-content;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: 32px;
+  block-size: auto;
+  padding: var(--ax-space-2) var(--ax-space-4);
+  border: 0;
+  border-radius: var(--ax-radius-2);
+  font-family: var(--ax-type-family-chrome);
+  font-size: .875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--ax-color-text-primary);
+  background-color: transparent;
+  white-space: normal;
+  opacity: 1;
+}
+[data-surface="history"] .ax-history__snapshot-action-label { min-inline-size: 0; overflow-wrap: anywhere; }
+[data-surface="history"] .ax-history__lifecycle-action:not([aria-disabled="true"]):hover {
+  background-color: color-mix(in srgb,var(--ax-color-text-primary) 6%,var(--ax-color-surface-shell));
+}
+[data-surface="history"] .ax-history__lifecycle-action:not([aria-disabled="true"]):active {
+  background-color: color-mix(in srgb,var(--ax-color-text-primary) 14%,var(--ax-color-surface-shell));
+}
+[data-surface="history"] .ax-history__lifecycle-action[aria-disabled="true"] {
+  opacity: 1;
+  background-color: transparent;
+}
+[data-surface="history"] .ax-history__lifecycle-action[aria-disabled="true"] .ax-history__snapshot-action-label {
+  opacity: var(--ax-opacity-disabled);
+}
+[data-surface="history"] .ax-history__lifecycle-action:focus-visible {
+  outline: 2px solid var(--ax-color-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ax-color-surface-shell);
+}
+[data-surface="history"] .ax-history__snapshot-lifecycle,
+[data-surface="history"] .ax-history__snapshot-lifecycle *,
+[data-surface="history"] .ax-history__lifecycle-action,
+[data-surface="history"] .ax-history__lifecycle-action * {
+  transition: none;
+  animation: none;
+}
+@media (max-width:767px) {
+  [data-surface="history"] .ax-history__lifecycle-action,
+  [data-surface="history"] .ax-history__snapshot-lifecycle .ax-history__result {
+    font-size:.9375rem; line-height:1.375rem;
+  }
+}
+@media (pointer:coarse) {
+  [data-surface="history"] .ax-history__lifecycle-action { min-inline-size:44px;min-block-size:44px; }
+}
+@media (forced-colors:active) {
+  [data-surface="history"] .ax-history__snapshot-lifecycle { forced-color-adjust:auto; background-color:Canvas; border-color:CanvasText; }
+  [data-surface="history"] .ax-history__snapshot-lifecycle .ax-history__result { color:CanvasText; }
+  [data-surface="history"] .ax-history__snapshot-check-rule { border-color:CanvasText; }
+  [data-surface="history"] .ax-history__lifecycle-action { forced-color-adjust:auto; color:CanvasText; background-color:transparent !important; }
+  [data-surface="history"] .ax-history__lifecycle-action:not([aria-disabled="true"]):hover,
+  [data-surface="history"] .ax-history__lifecycle-action:not([aria-disabled="true"]):active { background-color:ButtonFace !important; color:ButtonText; }
+  [data-surface="history"] .ax-history__lifecycle-action[aria-disabled="true"] .ax-history__snapshot-action-label { color:GrayText; opacity:1; }
+  [data-surface="history"] .ax-history__lifecycle-action:focus-visible { outline-color:Highlight;box-shadow:0 0 0 2px Canvas; }
+}

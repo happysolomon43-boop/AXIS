@@ -172,9 +172,9 @@ test("AC3 reads newest-first version metadata, ledger dates, and counts", async 
     chapter: first.chapter,
     active_version_id: third.version.id,
     versions: [
-      { ...third.version, at: dates.get(3), word_count: 2, snapshot: null, can_name_snapshot: false },
-      { ...second.version, at: dates.get(2), word_count: 1, snapshot: null, can_name_snapshot: true },
-      { ...first.version, at: dates.get(1), word_count: 1, snapshot: null, can_name_snapshot: false },
+      { ...third.version, at: dates.get(3), word_count: 2, snapshot: null, snapshot_lifecycle: null, can_name_snapshot: false },
+      { ...second.version, at: dates.get(2), word_count: 1, snapshot: null, snapshot_lifecycle: null, can_name_snapshot: true },
+      { ...first.version, at: dates.get(1), word_count: 1, snapshot: null, snapshot_lifecycle: null, can_name_snapshot: false },
     ],
   });
 

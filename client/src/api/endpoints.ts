@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -136,4 +136,22 @@ export async function captureSnapshot(chapterId: string, body: CaptureRequest): 
 export async function getSnapshotCapture(chapterId: string, requestId: string): Promise<CaptureResult | null> {
   const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(chapterId)}/snapshots/${encodeURIComponent(requestId)}`);
   return decodeCapture(result, chapterId, requestId);
+}
+
+const validUuid = (v: unknown): v is string => typeof v === "string" && v.length === 36 && uuidV4.test(v);
+export function validSnapshotLifecycle(value: unknown): value is SnapshotLifecycle {
+  return exactObject(value,["snapshot_id","state_token","previous_token"]) && validUuid(value.snapshot_id) &&
+    validUuid(value.state_token) && (value.previous_token === null || (validUuid(value.previous_token) && value.previous_token !== value.state_token));
+}
+export async function changeSnapshotLabel(chapterId:string, id:string, body:SnapshotLabelAction):Promise<SnapshotLabelResult|null> {
+  const {action,snapshot_id,expected_token}=body;
+  const result=await request<unknown>("POST", `/chapters/${encodeURIComponent(chapterId)}/versions/${encodeURIComponent(id)}/snapshot-label`,
+    {action,snapshot_id,expected_token,...(body.action==="undo"?{name:body.name}:{})});
+  if (!exactObject(result,["chapter_id","version_id","snapshot_lifecycle","snapshot","can_name_snapshot"]) ||
+    result.chapter_id!==chapterId || result.version_id!==id || !validSnapshotLifecycle(result.snapshot_lifecycle) ||
+    result.snapshot_lifecycle.snapshot_id!==snapshot_id || result.snapshot_lifecycle.previous_token!==expected_token ||
+    typeof result.can_name_snapshot!=="boolean") return null;
+  if (body.action==="remove" ? result.snapshot!==null :
+    !validNamedSnapshot(result.snapshot,chapterId,id) || result.snapshot.name!==body.name || result.can_name_snapshot!==false) return null;
+  return {chapter_id:chapterId,version_id:id,snapshot_lifecycle:result.snapshot_lifecycle,snapshot:result.snapshot as NamedSnapshot|null,can_name_snapshot:result.can_name_snapshot};
 }

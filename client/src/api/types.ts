@@ -94,7 +94,7 @@ export type NamedSnapshot = {
   chapter_id: string; version_id: string; kind: "snapshot"; name: string;
   l_seq: number; pack_pins: Record<string, never>; created_at: string;
 };
-export type HistoryItem = VersionRow & { at: string; word_count: number; snapshot?: NamedSnapshot | null; can_name_snapshot?: boolean };
+export type HistoryItem = VersionRow & { at: string; word_count: number; snapshot?: NamedSnapshot | null; snapshot_lifecycle?: SnapshotLifecycle | null; can_name_snapshot?: boolean };
 export type ChapterHistory = { chapter: ChapterRow; active_version_id: string | null; versions: HistoryItem[] };
 
 export type CaptureRequest = { request_id: string; content: string; base_version: string; base_revision: number; name?: string };
@@ -102,3 +102,7 @@ export type CaptureResult = {
   request_id: string; snapshot: NamedSnapshot; version: VersionRow;
   created_version: boolean; draft_current: boolean; active_version_id: string | null; sync: ChapterSync;
 };
+
+export type SnapshotLifecycle = { snapshot_id: string; state_token: string; previous_token: string | null };
+export type SnapshotLabelAction = { action: "remove"; snapshot_id: string; expected_token: string } | { action: "undo"; snapshot_id: string; expected_token: string; name: string };
+export type SnapshotLabelResult = { chapter_id: string; version_id: string; snapshot_lifecycle: SnapshotLifecycle; snapshot: NamedSnapshot | null; can_name_snapshot: boolean };
