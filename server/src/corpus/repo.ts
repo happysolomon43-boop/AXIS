@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import type { NamedSnapshot } from "../named-cuts/repository.js";
 import { AppError } from "../errors.js";
 import { computeSync, type ChapterSync } from "../sync/state.js";
 import { invalidHints, invalidParentVersion } from "./validate.js";
@@ -372,7 +373,7 @@ export type ChapterListItem = ChapterRow & {
 
 export type BookChapters = { chapters: ChapterListItem[] };
 
-export type HistoryItem = VersionRow & { at: string; word_count: number };
+export type HistoryItem = VersionRow & { at: string; word_count: number; snapshot: NamedSnapshot | null; can_name_snapshot: boolean };
 
 export type ChapterHistory = {
   chapter: ChapterRow;
@@ -453,9 +454,19 @@ export function getChapterHistory(
       l_seq: string; at: Date; word_count: string;
     }>(
       `SELECT v.id, v.chapter_id, v.version_no, v.source, v.text_hash, v.hints_hash,
-              v.parent_version, v.l_seq, l.at, ${versionWordCount} AS word_count
+              v.parent_version, v.l_seq, l.at, ${versionWordCount} AS word_count,
+              CASE WHEN nc.version_id IS NULL THEN NULL ELSE jsonb_build_object(
+                'chapter_id', nc.chapter_id, 'version_id', nc.version_id, 'kind', nc.kind,
+                'name', nc.label, 'l_seq', nc.l_seq, 'pack_pins', nc.pack_pins,
+                'created_at', to_char(nc.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+              ) END AS snapshot,
+              (nc.version_id IS NULL AND book.status <> 'released' AND v.source = 'draft_edit'
+                AND l.op = 'chapter.version.append' AND ${versionWordCount} > 0) AS can_name_snapshot
        FROM chapter_versions AS v
        JOIN ledger AS l ON l.series_id = v.series_id AND l.l_seq = v.l_seq
+       JOIN chapters c ON c.id = v.chapter_id
+       JOIN books book ON book.id = c.book_id
+       LEFT JOIN named_cuts nc ON nc.chapter_id = v.chapter_id AND nc.version_id = v.id
        WHERE v.chapter_id = $1
        ORDER BY v.version_no DESC`,
       [ref.id],

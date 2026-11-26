@@ -58,16 +58,24 @@ jobs:
         working-directory: server
         run: |
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 11
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 12
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'TRUNCATE series CASCADE'
           for f in $(find db/rollback -name '*.down.sql' | sort -r); do
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f"
           done
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 11
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 12
       - name: D06 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d06-smoke.mjs
       - name: D07 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d07-smoke.mjs
       - name: D08 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d08-smoke.mjs
+      - name: Install isolated browser verification tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/axis-browser" --no-audit --no-fund playwright@1.51.1
+          "$RUNNER_TEMP/axis-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: D13 computed responsive and keyboard preview acceptance
+        env:
+          AXIS_BROWSER_MODULE: ${{ runner.temp }}/axis-browser/node_modules/playwright/index.mjs
+        run: node .github/scripts/d13-browser.mjs

@@ -171,13 +171,13 @@ export function registerCorpusRoutes(app: FastifyInstance, { pool }: Deps): void
     return { chapters };
   });
 
-  app.get<{ Params: ChapterParams }>(chapterPath + "/history", async (request) => {
+  app.get<{ Params: ChapterParams }>(chapterPath + "/history", async (request, reply) => {
     const ownerId = requireUser(request);
     const { id } = request.params;
     if (isMalformedId(id)) throw chapterNotFound();
 
     const history = await getChapterHistory(pool, id, ownerId);
     if (!history) throw chapterNotFound();
-    return history;
+    return reply.header("Cache-Control", "no-store").send(history);
   });
 }

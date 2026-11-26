@@ -10,6 +10,7 @@ import { registerCorpusRoutes } from "./corpus/routes.js";
 import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
 import { registerPullBackRoutes } from "./pullback/routes.js";
+import { registerNamedCutRoutes } from "./named-cuts/routes.js";
 import { registerSeriesRoutes } from "./series/routes.js";
 import { registerVersionRoutes } from "./versions/routes.js";
 
@@ -84,6 +85,7 @@ export function buildApp(deps: Deps): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
   registerSeriesRoutes(app, deps);
+  registerNamedCutRoutes(app, deps);
   registerCorpusRoutes(app, deps);
   registerDraftRoutes(app, deps);
   registerVersionRoutes(app, deps);

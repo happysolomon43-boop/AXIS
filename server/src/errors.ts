@@ -5,6 +5,7 @@ export type ErrorCode =
   | "payload_too_large"
   | "unsupported_media_type"
   | "conflict"
+  | "snapshot_conflict"
   | "not_in_book"
   | "internal";
 
