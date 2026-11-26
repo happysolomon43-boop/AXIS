@@ -188,6 +188,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const read = useCallback(async () => {
     const end = beginOrdinary();
     const number = ++generation.current;
+    captureCurrent.current = initialCapture;
+    setCaptureUI(initialCapture);
     update({ state: "loading" });
     try {
       const detail = await getChapter(chapterId);
@@ -396,6 +398,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
       const next = fromRead(detail, head);
       refocus.current = false;
       focusOnReady.current = !inPlace;
+      const ui = captureCurrent.current;
+      changeCapture({ ...initialCapture, status:ui.status, failure:ui.failure === copy["draft.snapshot.unconfirmed"] ? ui.failure : "" });
       update({ ...next, editorKey: number });
     } catch {
       if (!isCurrent(number)) return;
@@ -457,7 +461,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     if (!captureEligible(current.current) || captureCurrent.current.form) return;
     const previous = document.activeElement;
     focusRequest.current = { previous, target:"input" };
-    changeCapture({ ...initialCapture, form:true });
+    changeCapture({ ...initialCapture, form:true, status:captureCurrent.current.status });
   }
   function closeSnapshot() {
     if (!captureCurrent.current.form || captureCurrent.current.phase !== "idle") return;
@@ -560,14 +564,15 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     catch(error) {
       if (!liveCapture(a)) return;
       if (error instanceof ApiError) {
-        const reason=detailsObject(error.details)?.reason;
+        const details=detailsObject(error.details);
+        const reason=details?.reason;
         if (error.status === 400 && error.code === "validation_failed" && hasDetail(error,"/name")) {
           captureFailure(a,copy["draft.snapshot.invalid"],fromForm); return;
         }
         if (error.status === 400 && error.code === "validation_failed" && hasDetail(error,"/content","nothing to capture")) {
           captureFailure(a,copy["draft.snapshot.empty"]); return;
         }
-        if (error.status === 409 && error.code === "conflict" && (reason === "version" || reason === "revision")) {
+        if (error.status === 409 && error.code === "conflict" && (reason === "version" || reason === "revision") && typeof details?.current_version === "string" && /^ver_[0-9a-f]{12}$/.test(details.current_version) && typeof details.current_revision === "number" && Number.isInteger(details.current_revision) && details.current_revision >= 0) {
           captureFailure(a,copy["draft.snapshot.conflict"],false,true); return;
         }
         if (error.status === 409 && error.code === "snapshot_conflict") {
@@ -660,7 +665,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const chip = syncChip({ version_id: s.loadedVersionId, active_version_id: s.activeVersionId, sync: s.sync });
   const failure = s.phase === "write-failed" || s.phase === "check-failed";
   const outcome = state === "clean" ? s.outcome : null;
-  const status = state === "unsaved" && isLocked ? copy["draft.unsaved"] : state === "saving" ? copy["draft.saving"]
+  const status = state === "unsaved" && (dirty(s) && !kept(s)) ? copy["draft.unsaved"] : state === "saving" ? copy["draft.saving"]
     : state === "sending" ? copy["draft.sending"] : state === "checking" ? copy["draft.checking"]
     : state === "reloading" && s.stopped ? copy["draft.reloading"] : outcome === "saved" ? copy["draft.saved"] : outcome === "sent" ? copy["draft.sent"] : "";
   return (
@@ -695,7 +700,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         </form>}
         <p className="ax-draft-status" role="status" data-part="status" data-outcome={outcome ?? undefined}>{status}</p>
         {showConflict && <div className="ax-banner" role="alert" data-part="conflict">
-          <p className="ax-banner__lead">{ui.conflict ? copy["draft.snapshot.conflict"] : copy["draft.conflict"]}</p>
+          {!ui.conflict && <p className="ax-banner__lead">{copy["draft.conflict"]}</p>}
           <button type="button" className="ax-button ax-button--secondary" ref={reloadButton} data-part="reload-latest" aria-disabled={isBusy}
             onClick={() => { void reloadLatest(); }}>{copy["draft.reloadLatest"]}</button>
           <button type="button" className="ax-button ax-button--secondary" data-part="keep-mine" aria-disabled={!keepMineActive(s)}
@@ -715,7 +720,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         </div>}
         <div>
           <p role="status" aria-atomic="true" data-part="snapshot-status">{ui.status}</p>
-          {ui.failure && !ui.invalid && !ui.conflict && <p role="alert" data-part="snapshot-failure">{ui.failure}</p>}
+          {ui.failure && !ui.invalid && <p role="alert" data-part="snapshot-failure">{ui.failure}</p>}
           {recovery && <div>
             <button ref={snapshotCheck} type="button" data-part="snapshot-check-again" aria-disabled={checkingManually} onClick={checkSnapshotAgain}>{copy["draft.snapshot.checkAgain"]}</button>
             <button ref={snapshotReturn} type="button" data-part="snapshot-return" aria-disabled={checkingManually} onClick={returnToDraft}>{copy["draft.snapshot.return"]}</button>
