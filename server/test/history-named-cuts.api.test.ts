@@ -26,8 +26,9 @@ test("AXB-0093 AC1 same ordered History with exact additive metadata and release
   for(let i=0;i<expected.length;i++){
     const v=expected[i]!,row=h.versions[i]!;
     const at=(await pool.query<{at:Date}>("SELECT at FROM ledger WHERE series_id=$1 AND l_seq=$2",[f.seriesId,v.l_seq])).rows[0]!.at.toISOString();
-    expect(row).toEqual({...v,at,word_count:row.word_count,snapshot:row.snapshot,can_name_snapshot:row.can_name_snapshot});
+    expect(row).toEqual({...v,at,word_count:row.word_count,snapshot:row.snapshot,snapshot_lifecycle:row.snapshot_lifecycle,can_name_snapshot:row.can_name_snapshot});
   }
+  expect(h.versions.map(v=>v.snapshot_lifecycle===null)).toEqual([true,false,true,true,true]);
   expect(await state(pool)).toEqual(before);
   await pool.query("UPDATE books SET status='released' WHERE id=$1",[f.bookId]);
   const released=(await f.history(id)).json<ChapterHistory>();
