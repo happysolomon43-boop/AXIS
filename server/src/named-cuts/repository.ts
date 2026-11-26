@@ -1,5 +1,5 @@
 /// <reference lib="es2024.string" />
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { AppError } from "../errors.js";
 
 export type NamedSnapshot = {
@@ -12,21 +12,21 @@ export type NamedSnapshot = {
   created_at: string;
 };
 export type NameInput = { kind: "snapshot"; chapter_id: string; version_id: string; name?: string };
-type StoredSnapshot = Omit<NamedSnapshot, "name" | "l_seq" | "created_at"> & {
+export type StoredSnapshot = Omit<NamedSnapshot, "name" | "l_seq" | "created_at"> & {
   label: string; l_seq: string; created_at: Date;
 };
-function dto(row: StoredSnapshot): NamedSnapshot {
+export function dto(row: StoredSnapshot): NamedSnapshot {
   return { chapter_id: row.chapter_id, version_id: row.version_id, kind: row.kind,
     name: row.label, l_seq: Number(row.l_seq), pack_pins: row.pack_pins, created_at: row.created_at.toISOString() };
 }
 function invalid(path: string, message: string): AppError {
   return new AppError(400, "validation_failed", "Request validation failed", { errors: [{ path, message }] });
 }
-const invalidName = () => invalid("/name", "must be at most 200 characters after whitespace normalization and must not contain NUL or unpaired surrogates");
+export const invalidName = () => invalid("/name", "must be at most 200 characters after whitespace normalization and must not contain NUL or unpaired surrogates");
 function missing(what: string): never {
   throw new AppError(404, "not_found", what + " not found");
 }
-const columns = "chapter_id, version_id, kind, label, l_seq, pack_pins, created_at";
+export const columns = "chapter_id, version_id, kind, label, l_seq, pack_pins, created_at";
 export async function nameSavedVersion(pool: Pool, ownerId: string, seriesId: string, input: NameInput):
 Promise<{ status: 200 | 201; snapshot: NamedSnapshot }> {
   const client = await pool.connect();
@@ -66,25 +66,7 @@ Promise<{ status: 200 | 201; snapshot: NamedSnapshot }> {
     if (Number(count.rows[0]!.words) === 0) throw invalid("/version_id", "nothing to capture");
     if (version.source !== "draft_edit" || version.op !== "chapter.version.append") throw invalid("/version_id", "select a version created by Save");
     if (!name) {
-      const rank = await client.query<{ rank: string }>(
-        `SELECT rank FROM (SELECT id, row_number() OVER (ORDER BY order_key COLLATE "C", id COLLATE "C") AS rank
-          FROM chapters WHERE book_id = $1) ranked WHERE id = $2`, [chapter.book_id, chapter.id]);
-      const sentences = async (id: string | null): Promise<string[]> => {
-        if (id === null) return [];
-        const { rows } = await client.query<{ sentence: string }>(
-          `SELECT s.sentence FROM blocks b CROSS JOIN LATERAL unnest(axis_sentences(b.text)) WITH ORDINALITY AS s(sentence, n)
-           WHERE b.version_id = $1 AND b.kind IN ('paragraph','heading') ORDER BY b.ordinal, s.n`, [id]);
-        return rows.map(row => row.sentence);
-      };
-      const selected = await sentences(version.id);
-      const parent = await sentences(version.parent_version);
-      const firstDifference = selected.findIndex((sentence, i) => sentence !== parent[i]);
-      const excerpt = firstDifference >= 0 ? selected[firstDifference]! :
-        parent.length > selected.length ? selected[selected.length - 1]! : selected[0]!;
-      const folded = await client.query<{ name: string }>("SELECT axis_fold($1) AS name", [
-        "Chapter " + rank.rows[0]!.rank + " · " + version.day + " · " + [...excerpt].slice(0, 80).join("")
-      ]);
-      name = folded.rows[0]!.name;
+      name = await defaultSnapshotName(client, chapter, version);
     }
     const { rows: [inserted] } = await client.query<StoredSnapshot>(
       `INSERT INTO named_cuts (chapter_id, version_id, series_id, l_seq, label)
@@ -96,4 +78,26 @@ Promise<{ status: 200 | 201; snapshot: NamedSnapshot }> {
     try { await client.query("ROLLBACK"); } catch { discard = true; }
     throw error;
   } finally { client.release(discard); }
+}
+
+export async function defaultSnapshotName(client: PoolClient, chapter: { id: string; book_id: string }, version: { id: string; parent_version: string | null; day: string }): Promise<string> {
+  const rank = await client.query<{ rank: string }>(
+    `SELECT rank FROM (SELECT id, row_number() OVER (ORDER BY order_key COLLATE "C", id COLLATE "C") AS rank
+      FROM chapters WHERE book_id = $1) ranked WHERE id = $2`, [chapter.book_id, chapter.id]);
+  const sentences = async (id: string | null): Promise<string[]> => {
+    if (id === null) return [];
+    const { rows } = await client.query<{ sentence: string }>(
+      `SELECT s.sentence FROM blocks b CROSS JOIN LATERAL unnest(axis_sentences(b.text)) WITH ORDINALITY AS s(sentence, n)
+       WHERE b.version_id = $1 AND b.kind IN ('paragraph','heading') ORDER BY b.ordinal, s.n`, [id]);
+    return rows.map(row => row.sentence);
+  };
+  const selected = await sentences(version.id);
+  const parent = await sentences(version.parent_version);
+  const firstDifference = selected.findIndex((sentence, i) => sentence !== parent[i]);
+  const excerpt = firstDifference >= 0 ? selected[firstDifference]! :
+    parent.length > selected.length ? selected[selected.length - 1]! : selected[0]!;
+  const folded = await client.query<{ name: string }>("SELECT axis_fold($1) AS name", [
+    "Chapter " + rank.rows[0]!.rank + " · " + version.day + " · " + [...excerpt].slice(0, 80).join("")
+  ]);
+  return folded.rows[0]!.name;
 }
