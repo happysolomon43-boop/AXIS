@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -79,4 +79,23 @@ export function restoreVersion(chapterId: string, versionId: string): Promise<Re
 
 export function pullBackChapter(chapterId: string): Promise<PullBackWritten> {
   return request("POST", `/chapters/${encodeURIComponent(chapterId)}/pull-back`);
+}
+
+export function validNamedSnapshot(value: unknown, chapterId: string, versionId: string): value is NamedSnapshot {
+  if (!exactObject(value, ["chapter_id", "version_id", "kind", "name", "l_seq", "pack_pins", "created_at"])) return false;
+  const { chapter_id, version_id, kind, name, l_seq, pack_pins, created_at } = value;
+  return chapter_id === chapterId && version_id === versionId && kind === "snapshot"
+    && typeof name === "string" && name.length > 0
+    && typeof l_seq === "number" && Number.isInteger(l_seq) && l_seq > 0
+    && exactObject(pack_pins, []) && typeof created_at === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(created_at)
+    && Number.isFinite(Date.parse(created_at)) && new Date(created_at).toISOString() === created_at;
+}
+
+export async function nameSnapshot(seriesId: string, chapterId: string, versionId: string, name?: string): Promise<NamedSnapshot | null> {
+  const result = await request<unknown>("POST", `/series/${encodeURIComponent(seriesId)}/named-cuts`, {
+    kind: "snapshot", chapter_id: chapterId, version_id: versionId, ...(name === undefined ? {} : { name }),
+  });
+  return exactObject(result, ["snapshot"]) && validNamedSnapshot(result.snapshot, chapterId, versionId)
+    ? result.snapshot : null;
 }

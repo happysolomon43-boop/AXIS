@@ -90,5 +90,9 @@ export type DraftWritten = { chapter: ChapterRow; base_version: string; revision
 
 export type VersionBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type VersionText = { chapter: ChapterRow; version: VersionRow; blocks: VersionBlock[] };
-export type HistoryItem = VersionRow & { at: string; word_count: number };
+export type NamedSnapshot = {
+  chapter_id: string; version_id: string; kind: "snapshot"; name: string;
+  l_seq: number; pack_pins: Record<string, never>; created_at: string;
+};
+export type HistoryItem = VersionRow & { at: string; word_count: number; snapshot?: NamedSnapshot | null; can_name_snapshot?: boolean };
 export type ChapterHistory = { chapter: ChapterRow; active_version_id: string | null; versions: HistoryItem[] };
