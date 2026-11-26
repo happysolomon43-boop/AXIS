@@ -9,6 +9,7 @@ import { identifyRequest, registerIdentity } from "./auth.js";
 import { registerCorpusRoutes } from "./corpus/routes.js";
 import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
+import { registerPullBackRoutes } from "./pullback/routes.js";
 import { registerSeriesRoutes } from "./series/routes.js";
 import { registerVersionRoutes } from "./versions/routes.js";
 
@@ -86,5 +87,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerCorpusRoutes(app, deps);
   registerDraftRoutes(app, deps);
   registerVersionRoutes(app, deps);
+  registerPullBackRoutes(app, deps);
   return app;
 }

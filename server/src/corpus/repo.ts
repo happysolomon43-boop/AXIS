@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { AppError } from "../errors.js";
+import { computeSync, type ChapterSync } from "../sync/state.js";
 import { invalidHints, invalidParentVersion } from "./validate.js";
 
 export type ChapterRow = {
@@ -148,7 +149,7 @@ export async function findOwnedChapter(
   return chapter ?? null;
 }
 
-async function readChapterRow(client: PoolClient, chapterId: string): Promise<ChapterRow> {
+export async function readChapterRow(client: PoolClient, chapterId: string): Promise<ChapterRow> {
   const { rows: [chapter] } = await client.query<ChapterRow>(
     "SELECT id, book_id, order_key FROM chapters WHERE id = $1",
     [chapterId],
@@ -157,7 +158,7 @@ async function readChapterRow(client: PoolClient, chapterId: string): Promise<Ch
   return chapter;
 }
 
-async function readActiveVersionId(client: PoolClient, chapterId: string): Promise<string | null> {
+export async function readActiveVersionId(client: PoolClient, chapterId: string): Promise<string | null> {
   const { rows: [active] } = await client.query<{ version_id: string | null }>(
     "SELECT version_id FROM chapter_active WHERE chapter_id = $1 ORDER BY since_l DESC LIMIT 1",
     [chapterId],
@@ -366,6 +367,7 @@ export type ChapterListItem = ChapterRow & {
   word_count: number;
   version_id: string | null;
   active_version_id: string | null;
+  sync: ChapterSync;
 };
 
 export type BookChapters = { chapters: ChapterListItem[] };
@@ -393,21 +395,45 @@ export function listBookChapters(
   return corpusTransaction(pool, readOnlyTransaction, async (client) => {
     if (ownerId !== undefined && !await findOwnedBook(client, ownerId, bookId)) return null;
 
-    const { rows } = await client.query<Omit<ChapterListItem, "word_count"> & { word_count: string }>(
+    const { rows } = await client.query<Omit<ChapterListItem, "word_count" | "sync"> & {
+      word_count: string;
+      latest_text_hash: string | null;
+      head_text_hash: string | null;
+      active_text_hash: string | null;
+      pulled_from: string | null;
+    }>(
       `SELECT c.id, c.book_id, c.order_key, v.id AS version_id, opening.text AS title,
-              (SELECT a.version_id FROM chapter_active AS a WHERE a.chapter_id = c.id
-               ORDER BY a.since_l DESC LIMIT 1) AS active_version_id,
+              active.version_id AS active_version_id,
+              v.text_hash AS latest_text_hash,
+              (SELECT encode(sha256(convert_to(axis_fold(d.content), 'UTF8')), 'hex')
+               FROM chapter_drafts AS d WHERE d.chapter_id = c.id) AS head_text_hash,
+              book_version.text_hash AS active_text_hash,
+              (SELECT p.book_version FROM chapter_pullbacks AS p WHERE p.chapter_id = c.id) AS pulled_from,
               ${versionWordCount} AS word_count
        FROM chapters AS c
        LEFT JOIN LATERAL (
-         SELECT id FROM chapter_versions WHERE chapter_id = c.id ORDER BY version_no DESC LIMIT 1
+         SELECT id, text_hash FROM chapter_versions WHERE chapter_id = c.id ORDER BY version_no DESC LIMIT 1
        ) AS v ON true
+       LEFT JOIN LATERAL (
+         SELECT a.version_id FROM chapter_active AS a WHERE a.chapter_id = c.id
+         ORDER BY a.since_l DESC LIMIT 1
+       ) AS active ON true
+       LEFT JOIN chapter_versions AS book_version ON book_version.id = active.version_id
        LEFT JOIN blocks AS opening ON opening.version_id = v.id AND opening.ordinal = 1 AND opening.kind = 'heading'
        WHERE c.book_id = $1
        ORDER BY c.order_key COLLATE "C" ASC, c.id COLLATE "C" ASC`,
       [bookId],
     );
-    return rows.map((row) => ({ ...row, word_count: Number(row.word_count) }));
+    return rows.map(({ latest_text_hash, head_text_hash, active_text_hash, pulled_from, word_count, ...item }) => ({
+      ...item,
+      word_count: Number(word_count),
+      sync: computeSync({
+        activeVersionId: item.active_version_id,
+        activeTextHash: active_text_hash,
+        draftTextHash: head_text_hash ?? latest_text_hash,
+        pulledFrom: pulled_from,
+      }),
+    }));
   });
 }
 

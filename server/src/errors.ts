@@ -5,6 +5,7 @@ export type ErrorCode =
   | "payload_too_large"
   | "unsupported_media_type"
   | "conflict"
+  | "not_in_book"
   | "internal";
 
 export class AppError extends Error {

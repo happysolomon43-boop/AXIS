@@ -1,0 +1,23 @@
+/* Leave space for the chapter title when the sync chip wraps. */
+.ax-binder-chapter:has(> .ax-binder__sync) {
+  grid-template-columns: var(--ax-size-binder-numeral) minmax(0, 1fr) auto fit-content(45%);
+}
+
+.ax-binder-chapter:has(> .ax-binder-chapter-title, > .ax-binder__sync) > .ax-binder__pullback {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  justify-self: end;
+}
+
+/* Keep the row's original dimming on its other controls and text. */
+.ax-binder-chapter:has(> .ax-binder__pullback):has(> [data-part="chapter-open"][aria-disabled="true"]:not([aria-current="true"])) {
+  opacity: 1;
+}
+
+.ax-binder-chapter:has(> .ax-binder__pullback):has(> [data-part="chapter-open"][aria-disabled="true"]:not([aria-current="true"])) > :not(.ax-binder__pullback) {
+  opacity: var(--ax-opacity-disabled);
+}
+
+.ax-binder__pullback {
+  transition: none;
+}

@@ -38,11 +38,19 @@ export type VersionRow = {
 
 export type ChapterCreated = { chapter: ChapterRow; version: VersionRow };
 
+export type ChapterSync = {
+  state: "draft_only" | "in_book" | "edited" | "being_revised";
+  same: boolean;
+};
+
+export type PullBackWritten = { chapter: ChapterRow; active_version_id: string };
+
 export type ChapterListItem = ChapterRow & {
   title: string | null;
   word_count: number;
   version_id: string | null;
   active_version_id: string | null;
+  sync?: ChapterSync;
 };
 
 export type BlockRow = {

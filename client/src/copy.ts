@@ -17,6 +17,14 @@ export const copy = {
   "binder.addFailed": "The first scene could not be added.",
   "binder.chipDraftOnly": "Draft only",
   "binder.chipEdited": "In Book, edited since upload",
+  "binder.sync.draftOnly": "Draft only",
+  "binder.sync.edited": "In Book, edited since upload",
+  "binder.sync.beingRevised": "Being revised",
+  "binder.sync.beingRevisedSame": "Being revised, no changes yet",
+  "binder.pullBack": "Pull back",
+  "binder.pullingBack": "Pulling back...",
+  "binder.pullBackPrefix": "Pull back",
+  "binder.pullBackFailed": "The chapter could not be pulled back.",
   "binder.chapterName": (position: number, title: string | null) =>
     title === null ? `Chapter ${position}` : `Chapter ${position}: ${title}`,
 

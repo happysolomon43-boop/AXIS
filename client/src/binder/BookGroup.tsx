@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createChapter, listBookChapters } from "../api/endpoints";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createChapter, listBookChapters, pullBackChapter } from "../api/endpoints";
 import type { BookRow, ChapterListItem } from "../api/types";
 import { copy } from "../copy";
 import { AxisMotif, ChevronGlyph } from "../glyphs";
-import { ChapterRow } from "./ChapterRow";
+import { canPullBack, ChapterRow } from "./ChapterRow";
 
 type ChapterList =
   | { state: "loading" | "failed" }
@@ -14,6 +14,7 @@ type GroupState = {
   expanded: boolean;
   adding: boolean;
   addFailed: boolean;
+  pullBackReadFailed: boolean;
 };
 
 type Props = {
@@ -26,27 +27,73 @@ type Props = {
   refreshToken?: number;
 };
 
+export function usePullBackController() {
+  const [pending, setPending] = useState<string | null>(null);
+  const [failureBookId, setFailureBookId] = useState<string | null>(null);
+  const busy = useRef(false);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  return {
+    pending,
+    failureBookId,
+    setFailureBookId,
+    begin(id: string) {
+      if (busy.current) return false;
+      busy.current = true;
+      setPending(id);
+      setFailureBookId(null);
+      return true;
+    },
+    end() {
+      busy.current = false;
+      if (mounted.current) setPending(null);
+    },
+  };
+}
+
+export const PullBackContext = createContext<ReturnType<typeof usePullBackController> | null>(null);
+
 export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId = null, locked = false, onOpenChapter, refreshToken = 0 }: Props) {
+  const localPullBack = usePullBackController();
+  const pullBack = useContext(PullBackContext) ?? localPullBack;
   const [view, setView] = useState<GroupState>({
     list: { state: "loading" },
     expanded: initiallyExpanded,
     adding: false,
     addFailed: false,
+    pullBackReadFailed: false,
   });
   const current = useRef(view);
   const latestRead = useRef(0);
   const mounted = useRef(false);
   const previousToken = useRef(refreshToken);
   const pendingRefresh = useRef(false);
-  const actions = useRef({ locked, onOpenChapter });
-  actions.current = { locked, onOpenChapter };
+  const actions = useRef({ locked, onOpenChapter, openChapterId });
+  actions.current = { locked, onOpenChapter, openChapterId };
+  const chapterList = useRef<HTMLOListElement>(null);
+  const focusAfterRead = useRef<HTMLButtonElement | null>(null);
+  const openedByPullBack = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const target = focusAfterRead.current;
+    focusAfterRead.current = null;
+    if (target?.isConnected && document.activeElement === document.body) target.focus();
+  }, [view]);
 
   const update = useCallback((patch: Partial<GroupState>) => {
     current.current = { ...current.current, ...patch };
     setView(current.current);
   }, []);
 
-  const read = useCallback(async (blocking: boolean, write?: { failed: boolean; previousCount: number }) => {
+  const read = useCallback(async (
+    blocking: boolean,
+    write?: { failed: boolean; previousCount: number },
+    settlePullBack?: (items: ChapterListItem[]) => void,
+  ) => {
     const number = ++latestRead.current;
     if (blocking) update({ list: { state: "loading" } });
     let items: ChapterListItem[];
@@ -54,15 +101,29 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
       items = await listBookChapters(book.id);
     } catch {
       if (mounted.current && latestRead.current === number && (write || !current.current.adding)) {
-        update({ list: { state: "failed" }, adding: false, addFailed: false });
+        if (settlePullBack && current.current.list.state === "ready") {
+          // Keep the last list available for manual retry after an inconclusive settle read.
+          update({ pullBackReadFailed: true });
+        } else {
+          update({ list: { state: "failed" }, adding: false, addFailed: false, pullBackReadFailed: false });
+        }
       }
       return;
     }
+    if (mounted.current) settlePullBack?.(items);
     if (mounted.current && latestRead.current === number && (write || !current.current.adding)) {
+      const focused = document.activeElement;
+      if (focused?.matches('[data-part="chapter-pull-back"]') && chapterList.current?.contains(focused)) {
+        const row = focused.parentElement;
+        const next = items.find(({ id }) => id === row?.dataset.chapterId);
+        if (next && !canPullBack(next) && openedByPullBack.current !== next.id) {
+          focusAfterRead.current = row?.querySelector('[data-part="chapter-open"]') ?? null;
+        }
+      }
       const previous = current.current.list;
       const addFailed = write ? write.failed && items.length <= write.previousCount
         : current.current.addFailed && (previous.state === "ready" ? items.length <= previous.items.length : items.length === 0);
-      update({ list: { state: "ready", items }, adding: false, addFailed });
+      update({ list: { state: "ready", items }, adding: false, addFailed, pullBackReadFailed: false });
     }
   }, [book.id, update]);
 
@@ -119,7 +180,41 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
     if (state.expanded && state.list.state !== "loading") void read(state.list.state !== "ready");
   }
 
-  const { list, expanded, adding, addFailed } = view;
+  async function pullBackItem(item: ChapterListItem) {
+    if (!current.current.expanded || actions.current.locked || !pullBack.begin(item.id)) return;
+
+    const openChapter = () => {
+      const { locked, openChapterId, onOpenChapter } = actions.current;
+      if (!mounted.current || !current.current.expanded || locked || openChapterId === item.id || !onOpenChapter) return;
+      openedByPullBack.current = item.id;
+      onOpenChapter(item.id);
+    };
+
+    try {
+      let failed = false;
+      try {
+        await pullBackChapter(item.id);
+      } catch {
+        failed = true;
+      }
+      if (!mounted.current || !current.current.expanded) return;
+
+      if (failed) pullBack.setFailureBookId(book.id);
+      const settled = read(false, undefined, (items) => {
+        if (failed && items.some(({ id, sync }) => id === item.id && sync?.state === "being_revised")) {
+          pullBack.setFailureBookId(null);
+          openChapter();
+        }
+      });
+      if (!failed) openChapter();
+      await settled;
+    } finally {
+      openedByPullBack.current = null;
+      pullBack.end();
+    }
+  }
+
+  const { list, expanded, adding, addFailed, pullBackReadFailed } = view;
   const state = list.state === "ready" && list.items.length === 0 ? "empty" : list.state;
   return (
     <li className="ax-binder-book" data-part="book" data-book-id={book.id}>
@@ -135,16 +230,19 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
             <span data-part="reading-rule" className="ax-reading-rule" aria-hidden="true" />
           </p>
         )}
-        {list.state === "failed" && (
+        {(list.state === "failed" || pullBackReadFailed) && (
           <div className="ax-status ax-binder-status" role="alert" data-part="read-failure">
             <div>{copy["binder.readFailed"]}</div>
             <button className="ax-button ax-button--secondary" type="button" data-part="try-again"
-              onClick={() => { if (current.current.list.state === "failed") void read(true); }}>
+              onClick={() => {
+                if (current.current.list.state === "failed") void read(true);
+                else if (current.current.pullBackReadFailed) void read(false);
+              }}>
               {copy["binder.tryAgain"]}
             </button>
           </div>
         )}
-        {list.state === "ready" && (list.items.length === 0 ? (
+        {state === "empty" && (
           <div data-part="empty" className="ax-binder-empty">
             <AxisMotif />
             <button className="ax-button ax-button--secondary ax-button--wide" type="button"
@@ -157,19 +255,26 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
               </p>
             )}
           </div>
-        ) : (
+        )}
+        {list.state === "ready" && state !== "empty" && (
+          <ol ref={chapterList} className="ax-binder-chapter-list" data-part="chapter-list">
+            {list.items.map((item, index) => <ChapterRow key={item.id} item={item} position={index + 1}
+              current={item.id === openChapterId} locked={locked} onOpen={() => actions.current.onOpenChapter?.(item.id)}
+              onPullBack={() => { void pullBackItem(item); }} pendingPullBack={pullBack.pending} />)}
+          </ol>
+        )}
+        {pullBack.failureBookId === book.id && (
+          <p className="ax-binder__pullback-failure" data-part="pull-back-failure" role="status">{copy["binder.pullBackFailed"]}</p>
+        )}
+        {state === "ready" && (
           <>
-            <ol className="ax-binder-chapter-list" data-part="chapter-list">
-              {list.items.map((item, index) => <ChapterRow key={item.id} item={item} position={index + 1}
-                current={item.id === openChapterId} locked={locked} onOpen={() => actions.current.onOpenChapter?.(item.id)} />)}
-            </ol>
             <button type="button" data-part="add-chapter" className="ax-button ax-button--secondary"
               aria-disabled={adding || locked} onClick={() => { void addChapter(false); }}>
               {adding ? copy["binder.adding"] : copy["binder.addChapter"]}
             </button>
             {addFailed && <p role="alert" data-part="add-failure">{copy["binder.addChapterFailed"]}</p>}
           </>
-        ))}
+        )}
       </div>
     </li>
   );

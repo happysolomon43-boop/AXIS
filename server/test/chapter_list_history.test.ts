@@ -112,22 +112,22 @@ test("AC1 lists chapters with latest metadata and a separate activation state", 
   const third = await create("");
   const fourthId = await chapterOnly();
   expect(await list()).toEqual([
-    { ...first.chapter, title: "Chapter One", word_count: 10, version_id: first.version.id, active_version_id: null },
-    { ...second.chapter, title: null, word_count: 1, version_id: second.version.id, active_version_id: null },
-    { ...third.chapter, title: null, word_count: 0, version_id: third.version.id, active_version_id: null },
+    { ...first.chapter, title: "Chapter One", word_count: 10, version_id: first.version.id, active_version_id: null, sync: { state: "draft_only", same: false } },
+    { ...second.chapter, title: null, word_count: 1, version_id: second.version.id, active_version_id: null, sync: { state: "draft_only", same: false } },
+    { ...third.chapter, title: null, word_count: 0, version_id: third.version.id, active_version_id: null, sync: { state: "draft_only", same: false } },
     {
       id: fourthId, book_id: bookId, order_key: "0000004000",
-      title: null, word_count: 0, version_id: null, active_version_id: null,
+      title: null, word_count: 0, version_id: null, active_version_id: null, sync: { state: "draft_only", same: false },
     },
   ]);
   const id = first.chapter.id;
   const sent = await write(id, "send", "## Part\n\nx");
   expect((await list())[0]).toEqual({
-    ...first.chapter, title: "Part", word_count: 2, version_id: sent.version.id, active_version_id: sent.version.id,
+    ...first.chapter, title: "Part", word_count: 2, version_id: sent.version.id, active_version_id: sent.version.id, sync: { state: "in_book", same: true },
   });
   const saved = await write(id, "versions", "hello");
   expect((await list())[0]).toEqual({
-    ...first.chapter, title: null, word_count: 1, version_id: saved.version.id, active_version_id: sent.version.id,
+    ...first.chapter, title: null, word_count: 1, version_id: saved.version.id, active_version_id: sent.version.id, sync: { state: "edited", same: false },
   });
 
   await deactivate(id);

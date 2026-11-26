@@ -14,3 +14,13 @@ export function versionChip(item: Pick<ChapterListItem, "version_id" | "active_v
   if (item.active_version_id === item.version_id) return null;
   return copy["binder.chipEdited"];
 }
+
+export function syncChip(item: Pick<ChapterListItem, "version_id" | "active_version_id" | "sync">): string | null {
+  if (item.sync === undefined) return versionChip(item);
+  switch (item.sync.state) {
+    case "draft_only": return copy["binder.sync.draftOnly"];
+    case "edited": return copy["binder.sync.edited"];
+    case "being_revised": return item.sync.same ? copy["binder.sync.beingRevisedSame"] : copy["binder.sync.beingRevised"];
+    default: return null;
+  }
+}

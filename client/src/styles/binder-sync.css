@@ -1,0 +1,47 @@
+.ax-binder__sync {
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  block-size: auto;
+  min-block-size: 20px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+  color: var(--ax-color-text-secondary);
+}
+
+.ax-binder__pullback {
+  position: relative;
+  z-index: 1;
+  min-inline-size: 17ch;
+  justify-content: center;
+  text-align: center;
+}
+
+.ax-binder__pullback[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ax-binder__pullback[aria-disabled="true"]:hover {
+  background-color: transparent;
+}
+
+.ax-binder__pullback[aria-disabled="true"]:active {
+  background-color: transparent;
+}
+
+.ax-binder__pullback-failure {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  margin: 0;
+  padding-block: var(--ax-space-3);
+  padding-inline: 56px var(--ax-space-3);
+  font-size: var(--ax-type-small-size);
+  line-height: var(--ax-type-small-lh);
+  color: var(--ax-color-text-primary);
+  overflow-wrap: anywhere;
+  background-color: var(--ax-color-surface-shell);
+  border-block-start: 1px solid var(--ax-color-border-hair);
+}

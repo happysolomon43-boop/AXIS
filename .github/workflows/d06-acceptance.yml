@@ -58,13 +58,13 @@ jobs:
         working-directory: server
         run: |
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 10
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 11
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'TRUNCATE series CASCADE'
           for f in $(find db/rollback -name '*.down.sql' | sort -r); do
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f"
           done
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 10
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 11
       - name: D06 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d06-smoke.mjs
       - name: D07 live preview proxy smoke and graceful shutdown
