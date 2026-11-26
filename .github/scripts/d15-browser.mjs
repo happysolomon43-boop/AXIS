@@ -42,7 +42,7 @@ await withPreview(async()=>{
       const rect=await control.boundingBox();assert.ok(rect.height>=(coarse?44:32)-.5&&(!coarse||rect.width>=43.5));
       assert.equal(await computed(control,"font-size"),(width<768?.9375:.875)*scale+"px");
       assert.equal(await computed(control,"transition-duration"),"0s");
-      await control.focus();assert.equal(await computed(control,"outline-width"),"2px");
+      await page.keyboard.press("Tab");await control.focus();assert.ok(await control.evaluate(e=>e.matches(":focus-visible")));assert.equal(await computed(control,"outline-width"),"2px");
      }
     }
     await page.evaluate(()=>document.documentElement.style.fontSize="16px");await page.setViewportSize({width:1262,height:900});
