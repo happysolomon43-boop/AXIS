@@ -50,7 +50,7 @@ test("AXB-0095 AC2 Shell preserves editor, pending guard, focus, and served defa
   const {calls}=mockApi([
     {method:"GET",path:chaptersPath,reply:chapterList(fourRows.slice(0,1))},
     {method:"GET",path:chapterPath,reply:reply(detailText)},{method:"GET",path:draftPath,reply:reply(draftNone)},
-    {method:"GET",path:historyPath,reply:(_,n)=>reply(n===0?historyEligible:namedHistory(eligible,"Default from server"))},
+    {method:"GET",path:historyPath,reply:(_,n)=>reply(n===0?historyEligible:namedHistory(eligible,n===1?"Before the bell":"Default from server"))},
     {method:"POST",path:namePath,reply:()=>held.promise}
   ]);
   const ui=render(<Shell tree={treeA}/>);const p=(name:string)=>part(ui.container,name);
@@ -69,7 +69,7 @@ test("AXB-0095 AC2 Shell preserves editor, pending guard, focus, and served defa
   expect(calls.filter(c=>c.method==="POST")[0].body).toEqual({kind:"snapshot",chapter_id:chapterA.id,version_id:eligible.id,name:"Before the bell"});
   await act(async()=>held.resolve(reply({snapshot:snapshot(eligible,"Before the bell")},201)));
   expect(p("snapshot-name")).toHaveTextContent("Before the bell");expect(p("snapshot-name-status")).toHaveTextContent("Snapshot named.");
-  expect(p("editor")).toBe(editor);expect(calls.filter(c=>c.path===historyPath)).toHaveLength(1);
+  expect(p("editor")).toBe(editor);expect(calls.filter(c=>c.path===historyPath)).toHaveLength(2);
   expect(calls.filter(c=>c.method!=="GET")).toHaveLength(1);
   fireEvent.click(p("drawer-close"));fireEvent.click(p("history-door"));await waitFor(()=>expect(p("snapshot-name")).toHaveTextContent("Default from server"));
 });
@@ -136,7 +136,7 @@ test("AXB-0095 AC3 manual retry only, and authoritative ordinary ineligibility",
   await waitFor(()=>expect(ui.p("snapshot-name-failure")).toHaveTextContent("The snapshot could not be named."));
   expect(ui.calls.map(c=>c.method)).toEqual(["GET","POST","GET"]);
   ui.submit();await waitFor(()=>expect(ui.p("snapshot-name-status")).toHaveTextContent("Snapshot named."));
-  expect(ui.calls.map(c=>c.method)).toEqual(["GET","POST","GET","POST"]);ui.unmount();
+  expect(ui.calls.map(c=>c.method)).toEqual(["GET","POST","GET","POST","GET"]);ui.unmount();
   const pending=deferred<ReturnType<typeof reply>>();
   const other=mount((_,n)=>reply(n===0?historyEligible:{...historyEligible,versions:historyEligible.versions.map(row=>({...row,can_name_snapshot:false}))}),
     [{method:"POST",path:namePath,reply:()=>pending.promise}]);

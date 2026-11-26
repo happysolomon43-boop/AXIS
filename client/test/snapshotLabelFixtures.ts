@@ -1,0 +1,13 @@
+import type {SnapshotLifecycle,SnapshotLabelAction,SnapshotLabelResult,ChapterHistory} from "../src/api/types";
+import {chapterA,named,historyNamed,snapshot} from "./namedCutFixtures";
+export const uuid=(n:number)=>"00000000-0000-4000-8000-"+n.toString(16).padStart(12,"0");
+export const live:SnapshotLifecycle={snapshot_id:uuid(1),state_token:uuid(2),previous_token:null};
+export const removed:SnapshotLifecycle={snapshot_id:uuid(1),state_token:uuid(3),previous_token:uuid(2)};
+export const restored:SnapshotLifecycle={snapshot_id:uuid(1),state_token:uuid(4),previous_token:uuid(3)};
+export const path="/api/chapters/"+chapterA.id+"/versions/"+named.id+"/snapshot-label";
+export const original=snapshot(named,"Before the bell");
+export const body:SnapshotLabelAction={action:"remove",snapshot_id:live.snapshot_id,expected_token:live.state_token};
+export const undo:SnapshotLabelAction={action:"undo",snapshot_id:live.snapshot_id,expected_token:removed.state_token,name:original.name};
+export const removal:SnapshotLabelResult={chapter_id:chapterA.id,version_id:named.id,snapshot:null,snapshot_lifecycle:removed,can_name_snapshot:true};
+export const restoration:SnapshotLabelResult={...removal,snapshot:original,snapshot_lifecycle:restored,can_name_snapshot:false};
+export const history=(marker:SnapshotLifecycle|null=live,name=original):ChapterHistory=>({...historyNamed,versions:historyNamed.versions.map(v=>v.id===named.id?{...v,snapshot:marker===removed?null:name,snapshot_lifecycle:marker,can_name_snapshot:marker===removed}:{...v,snapshot_lifecycle:null})});
