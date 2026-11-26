@@ -119,7 +119,7 @@ test("AC3 preserves the Drawer on chapter switches and refreshes only after a ve
   const ui = mount({ secondChapter: true, extra: [
     { method: "GET", path: pathB, reply: reply(detailText) },
     { method: "GET", path: `${pathB}/draft`, reply: reply(draftNone) },
-    { method: "GET", path: historyB, reply: (_, n) => reply(n === 0 ? historyTwo : historyThree) },
+    { method: "GET", path: historyB, reply: (_, n) => reply((() => { const h=n===0?historyTwo:historyThree;return {...h,chapter:{...h.chapter,id:"ch_00000000000b"},versions:h.versions.map(v=>({...v,chapter_id:"ch_00000000000b"}))}; })()) },
     { method: "PUT", path: `${pathB}/draft`, reply: reply(putOk(1)) },
     { method: "POST", path: `${pathB}/versions`, reply: reply(writtenC(null), 201) },
   ] });

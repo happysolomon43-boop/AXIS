@@ -116,7 +116,8 @@ test("AC2 posts once, reports the captured outcome and preserves Restore focus",
   expect(status.textContent).toBe(applied);
   expect(status.nextElementSibling).toBe(ui.part("snapshot-filter"));
   expect(ui.part("snapshot-filter").nextElementSibling).toBe(ui.part("snapshot-name-status"));
-  expect(ui.part("snapshot-name-status").nextElementSibling).toBe(ui.part("version-list"));
+  expect(ui.part("snapshot-name-status").nextElementSibling).toBe(ui.part("snapshot-lifecycle-status").parentElement);
+  expect(ui.part("snapshot-lifecycle-status").parentElement?.nextElementSibling).toBe(ui.part("version-list"));
   expect(ui.part("version-actions")).toHaveAttribute("data-state", "idle");
   expect(ui.button()).not.toHaveAttribute("aria-disabled");
   expect(ui.button()).toHaveFocus();

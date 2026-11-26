@@ -148,10 +148,9 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   const initialChapter = useRef(chapterId).current;
   const root = useRef<HTMLElement>(null);
   const [list, setList] = useState<List>({ state: "loading" });
-  const listRef=useRef(list);
-  listRef.current=list;
   const [labelUI,setLabelUI]=useState<LabelUI>(initialLabel);
   const labelRef=useRef<LabelUI>(initialLabel);
+  const manualCheck=useRef(false);
   const labelFocus=useRef<{previous:Element|null;part:string;id?:string}|null>(null);
   const writeGeneration=useRef(0);
   const acceptedRead=useRef(0);
@@ -159,7 +158,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   const handledRefresh=useRef(refreshToken);
   const deferredRefresh=useRef(false);
   const [refreshWake,setRefreshWake]=useState(0);
-  function changeLabel(next:LabelUI){labelRef.current=next;setLabelUI(next);}
+  function changeLabel(next:LabelUI){if(next.phase!=="checking")manualCheck.current=false;labelRef.current=next;setLabelUI(next);}
   function labelBlocked(){return labelRef.current.phase!=="idle";}
   function labelPending(){return labelRef.current.phase==="mutating"||labelRef.current.phase==="checking";}
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -194,6 +193,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   function changeNaming(next: Naming | null) {
     namingRef.current = next;
     setNaming(next);
+    if(next?.phase!=="pending"&&deferredRefresh.current)setRefreshWake(n=>n+1);
   }
   useLayoutEffect(() => {
     const next = focusNext.current;
@@ -235,9 +235,10 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   function currentUndo(history:ChapterHistory,undo:Undo|null):Undo|null {
     if(!undo)return null;
     const row=history.versions.find(v=>v.id===undo.original.version_id&&v.chapter_id===initialChapter);
-    if(row?.snapshot_lifecycle===undefined&&row)return undo;
-    const m=row&&usableMarker(row);
-    return m&&row?.snapshot===null&&m.snapshot_id===undo.marker.snapshot_id&&m.state_token===undo.marker.state_token?undo:null;
+    if(!row||row.snapshot_lifecycle===undefined)return undo;
+    const m=usableMarker(row);
+    if(!m)return undo;
+    return row.snapshot===null&&m.snapshot_id===undo.marker.snapshot_id&&m.state_token===undo.marker.state_token?undo:null;
   }
   function rememberFocus(part:string,id?:string) {
     const previous=document.activeElement;
@@ -311,11 +312,11 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   }
   function checkLabel(){
     const a=labelRef.current.attempt;
-    if(labelRef.current.phase==="unconfirmed"&&a)void settleLabel(a);
+    if(labelRef.current.phase==="unconfirmed"&&a){manualCheck.current=true;void settleLabel(a);}
   }
 
   const readHistory = async () => {
-    if(labelPending()){deferredRefresh.current=true;return;}
+    if(labelPending()||namingRef.current?.phase==="pending"){deferredRefresh.current=true;return;}
     const read = ++latestHistoryRead.current;
     const generation=writeGeneration.current;
     setList((previous) => previous.state === "ready"
@@ -325,7 +326,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     try {
       history = await getHistory(initialChapter);
     } catch {
-      if (!readGuard(read,generation)) return;
+      if (!readGuard(read,generation)||labelPending()) return;
       acceptedRead.current=read;
       if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt)uncertain(labelRef.current.attempt);
       setList((previous) => previous.state === "ready"
@@ -333,9 +334,9 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
         : { state: "failed" });
       return;
     }
-    if (!readGuard(read,generation)) return;
+    if (!readGuard(read,generation)||labelPending()) return;
     acceptedRead.current=read;
-    if(history.chapter.id!==initialChapter)return;
+    if(history.chapter.id!==initialChapter){setList(previous=>previous.state==="ready"?{...previous,refreshFailed:true}:{state:"failed"});return;}
     if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt){adjudicate(labelRef.current.attempt,history);return;}
     setHistory(history);
     const undo=currentUndo(history,labelRef.current.undo);
@@ -365,7 +366,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   useEffect(()=>{
     latestRefresh.current=refreshToken;
     if(refreshToken!==handledRefresh.current)deferredRefresh.current=true;
-    if(deferredRefresh.current&&!labelPending()){
+    if(deferredRefresh.current&&!labelPending()&&namingRef.current?.phase!=="pending"){
       deferredRefresh.current=false;
       handledRefresh.current=latestRefresh.current;
       void readHistory();
@@ -575,7 +576,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
           {labelUI.phase==="checking"&&<span className="ax-history__snapshot-check-rule" aria-hidden="true"/>}
           {labelUI.failure&&<p className="ax-history__note ax-history__result" data-part="snapshot-lifecycle-failure" role="alert">{labelUI.failure}</p>}
           {labelUI.undo&&labelButton("snapshot-remove-undo",copy["history.snapshotLifecycle.undo"],lifecycleInert,undoLabel)}
-          {labelUI.phase==="unconfirmed"&&labelButton("snapshot-lifecycle-check",copy["history.snapshotLifecycle.check"],false,checkLabel)}
+          {(labelUI.phase==="unconfirmed"||(labelUI.phase==="checking"&&manualCheck.current))&&labelButton("snapshot-lifecycle-check",copy["history.snapshotLifecycle.check"],labelUI.phase==="checking",checkLabel)}
         </div>
         {visible.length === 0
           ? filter === "named" ? <div className="ax-history__snapshot-empty-group">
