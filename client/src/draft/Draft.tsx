@@ -2,6 +2,7 @@ import "./draft.css";
 import "./autosave.css";
 import "./conflict.css";
 import "../styles/binder-sync.css";
+import "../styles/draft-snapshot.css";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Node } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
@@ -671,31 +672,33 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   return (
     <section ref={captureRoot} className="ax-draft" data-surface="draft" data-state={state} data-autosave={autosave}>
       <div className="ax-draft-head" data-part="draft-head">
-        <div className="ax-toolbar" data-part="toolbar" role="group">
+        <div className="ax-toolbar ax-draft__snapshot-toolbar" data-part="toolbar" role="group">
           {chip !== null && <span className="ax-binder__sync" data-part="version-chip">{chip}</span>}
           <span className="ax-autosave" data-part="autosave" role="status">
             {autosave !== "idle" && autosave !== "saved" &&
               <span className="ax-autosave__dot" data-part="autosave-dot" aria-hidden="true" />}
             {autosave === "failed" ? copy["draft.autosaveFailed"] : null}
           </span>
-          {s.phase === null && !s.stopped && <button ref={snapshotButton} type="button" data-part="snapshot" aria-disabled={!snapshotActive}
-            onClick={openSnapshot}>{copy["draft.snapshot.action"]}</button>}
+          {s.phase === null && !s.stopped && <button ref={snapshotButton} className="ax-button ax-button--quiet ax-draft__snapshot" type="button" data-part="snapshot" aria-disabled={!snapshotActive}
+            onClick={openSnapshot}><span>{copy["draft.snapshot.action"]}</span></button>}
           <button type="button" className="ax-button ax-button--secondary" data-part="save" aria-disabled={!saveActive}
             onClick={() => { void start("save"); }}>{copy["draft.save"]}</button>
           <button type="button" className={`ax-button ax-button--${sendActive ? "primary" : "secondary"}`} data-part="send"
             aria-disabled={!sendActive} onClick={() => { void start("send"); }}>{copy["draft.send"]}</button>
         </div>
-        {ui.form && <form ref={snapshotForm} data-part="snapshot-form" onSubmit={event => { event.preventDefault(); void startSnapshot(true); }}
+        {ui.form && <form ref={snapshotForm} className="ax-draft__snapshot-form" data-part="snapshot-form" onSubmit={event => { event.preventDefault(); void startSnapshot(true); }}
           onKeyDown={event => { if (event.key === "Escape" && !pendingCapture) { event.preventDefault(); event.stopPropagation(); closeSnapshot(); } }}>
-          <label htmlFor={inputId}>{copy["draft.snapshot.label"]}</label>
-          <input ref={snapshotName} id={inputId} data-part="snapshot-name" dir="auto" value={ui.name} readOnly={pendingCapture}
+          <div className="ax-field">
+          <label className="ax-field-label" htmlFor={inputId}>{copy["draft.snapshot.label"]}</label>
+          <input className="ax-input ax-draft__snapshot-input" ref={snapshotName} id={inputId} data-part="snapshot-name" dir="auto" value={ui.name} readOnly={pendingCapture}
             aria-describedby={inputId+"-hint"+(ui.invalid ? " "+inputId+"-failure" : "")} aria-invalid={ui.invalid || undefined}
             onChange={event=>editName(event.target.value)} />
-          <p id={inputId+"-hint"}>{copy["draft.snapshot.hint"]}</p>
-          {ui.invalid && <p id={inputId+"-failure"} role="alert" data-part="snapshot-failure">{ui.failure}</p>}
-          {!recovery && <div>
-            <button type="submit" data-part="snapshot-submit" aria-disabled={pendingCapture}>{copy["draft.snapshot.submit"]}</button>
-            <button type="button" data-part="snapshot-cancel" aria-disabled={pendingCapture} onClick={closeSnapshot}>{copy["draft.snapshot.cancel"]}</button>
+          <p className="ax-draft__snapshot-hint" id={inputId+"-hint"}>{copy["draft.snapshot.hint"]}</p>
+          {ui.invalid && <p className="ax-draft__snapshot-failure" id={inputId+"-failure"} role="alert" data-part="snapshot-failure"><span className="ax-draft__snapshot-error-mark" aria-hidden="true" /><span>{ui.failure}</span></p>}
+          </div>
+          {!recovery && <div className="ax-draft__snapshot-actions">
+            <button className="ax-button ax-button--secondary ax-draft__snapshot-button" type="submit" data-part="snapshot-submit" aria-disabled={pendingCapture}><span>{copy["draft.snapshot.submit"]}</span></button>
+            <button className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-cancel" aria-disabled={pendingCapture} onClick={closeSnapshot}><span>{copy["draft.snapshot.cancel"]}</span></button>
           </div>}
         </form>}
         <p className="ax-draft-status" role="status" data-part="status" data-outcome={outcome ?? undefined}>{status}</p>
@@ -718,12 +721,12 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
           {s.phase === "check-failed" && <button type="button" className="ax-button ax-button--secondary" data-part="check-again"
             onClick={checkAgain}>{copy["draft.checkAgain"]}</button>}
         </div>}
-        <div>
-          <p role="status" aria-atomic="true" data-part="snapshot-status">{ui.status}</p>
-          {ui.failure && !ui.invalid && <p role="alert" data-part="snapshot-failure">{ui.failure}</p>}
-          {recovery && <div>
-            <button ref={snapshotCheck} type="button" data-part="snapshot-check-again" aria-disabled={checkingManually} onClick={checkSnapshotAgain}>{copy["draft.snapshot.checkAgain"]}</button>
-            <button ref={snapshotReturn} type="button" data-part="snapshot-return" aria-disabled={checkingManually} onClick={returnToDraft}>{copy["draft.snapshot.return"]}</button>
+        <div className="ax-draft__snapshot-feedback">
+          <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status">{ui.status}</p>
+          {ui.failure && !ui.invalid && <p className="ax-draft__snapshot-failure" role="alert" data-part="snapshot-failure">{ui.failure}</p>}
+          {recovery && <div className="ax-draft__snapshot-actions">
+            <button ref={snapshotCheck} className="ax-button ax-button--secondary ax-draft__snapshot-button" type="button" data-part="snapshot-check-again" aria-disabled={checkingManually} onClick={checkSnapshotAgain}><span>{copy["draft.snapshot.checkAgain"]}</span></button>
+            <button ref={snapshotReturn} className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-return" aria-disabled={checkingManually} onClick={returnToDraft}><span>{copy["draft.snapshot.return"]}</span></button>
           </div>}
         </div>
       </div>

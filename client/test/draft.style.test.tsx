@@ -48,7 +48,7 @@ test("AXB-0040 AC5 draws the sticky head, actions and exact failure banner, with
   const assertHead = (failure: boolean) => {
     const head = m.part("draft-head");
     expect(head).toHaveClass("ax-draft-head");
-    expect([...head.children].map(el => el.getAttribute("data-part"))).toEqual(failure ? ["toolbar", "status", "write-failure"] : ["toolbar", "status"]);
+    expect([...head.children].filter(el=>!el.classList.contains("ax-draft__snapshot-feedback")).map(el => el.getAttribute("data-part"))).toEqual(failure ? ["toolbar", "status", "write-failure"] : ["toolbar", "status"]);
     expect(head.nextElementSibling).toBe(m.part("page"));
     expect(m.part("page")).toContainElement(m.part("leaf"));
     expect(m.part("save")).toHaveClass("ax-button", "ax-button--secondary");
@@ -125,7 +125,7 @@ test("AXB-0081 AC1 uses the shared text-only chip and leaves the other toolbar c
     }
     const toolbar = ui.part("toolbar");
     expect([...toolbar.children].map((el) => el.getAttribute("data-part")).filter((part) => part !== "version-chip"))
-      .toEqual(["autosave", "save", "send"]);
+      .toEqual(["autosave", "snapshot", "save", "send"]);
     expect(toolbar.querySelector("[style]")).toBeNull();
     expect(ui.root.querySelector(".ax-binder__pullback, .ax-binder__pullback-failure")).toBeNull();
     ui.unmount();
@@ -149,7 +149,7 @@ test("AXB-0081 AC2 reuses the exact shared chip rule and meets the room and rais
   `;
   expect(rule?.replace(/\s+/g, "")).toBe(expected.replace(/\s+/g, ""));
   const imports = Array.from(draftSource.matchAll(/^import "([^"]+\.css)";$/gm), ([, path]) => path);
-  expect(imports).toEqual(["./draft.css", "./autosave.css", "./conflict.css", "../styles/binder-sync.css"]);
+  expect(imports).toEqual(["./draft.css", "./autosave.css", "./conflict.css", "../styles/binder-sync.css", "../styles/draft-snapshot.css"]);
   for (const [text, room, raised] of [
     ["#4A4D52", "#ECEBE6", "#FCFCFA"],
     ["#A9A79F", "#0B0C0E", "#0E1012"],

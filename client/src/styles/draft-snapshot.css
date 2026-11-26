@@ -1,0 +1,95 @@
+/* Local D14 controls: no changes to shared tokens or the manuscript. */
+.ax-draft .ax-draft__snapshot-toolbar { flex-wrap: wrap; gap: var(--ax-space-3); min-inline-size: 0; }
+.ax-draft .ax-draft__snapshot-form,
+.ax-draft .ax-draft__snapshot-feedback {
+  box-sizing: border-box; min-inline-size: 0; background: var(--ax-color-surface-shell);
+  font-family: "Atkinson Hyperlegible Next", system-ui, sans-serif; overflow-wrap: anywhere;
+}
+.ax-draft .ax-draft__snapshot-form {
+  inline-size: min(100%, 20rem); max-inline-size: 100%; display: flex; flex-direction: column;
+  gap: var(--ax-space-3); padding: var(--ax-space-4);
+  border-block: 1px solid var(--ax-color-border-hair);
+}
+.ax-draft .ax-draft__snapshot-form .ax-field {
+  display: flex; flex-direction: column; gap: var(--ax-space-2); min-inline-size: 0;
+}
+.ax-draft .ax-draft__snapshot-form label,
+.ax-draft .ax-draft__snapshot-hint,
+.ax-draft .ax-draft__snapshot-failure {
+  margin: 0; font-size: .75rem; line-height: 1rem; font-weight: 400; letter-spacing: .01em;
+  color: var(--ax-color-text-secondary);
+}
+.ax-draft .ax-draft__snapshot-input {
+  box-sizing: border-box; inline-size: 100%; min-inline-size: 0; max-inline-size: 100%;
+  min-block-size: var(--ax-size-row); block-size: auto; padding: var(--ax-space-2) var(--ax-space-3);
+  font: 400 .875rem/1.25rem "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  letter-spacing: 0; background: #F8F8F6; color: var(--ax-color-text-primary); caret-color: var(--ax-color-text-primary);
+  border: 1px solid var(--ax-color-border-control); border-radius: var(--ax-radius-2);
+}
+:root[data-theme="dark"] .ax-draft .ax-draft__snapshot-input { background: #17181A; }
+:root[data-theme="sepia"] .ax-draft .ax-draft__snapshot-input { background: #EDE3CE; }
+.ax-draft:has(.ax-leaf[data-profile="modern"]) .ax-draft__snapshot-input { background: #FCFCFD; }
+:root[data-theme="dark"] .ax-draft:has(.ax-leaf[data-profile="modern"]) .ax-draft__snapshot-input { background: #0F1113; }
+:root[data-theme="sepia"] .ax-draft:has(.ax-leaf[data-profile="modern"]) .ax-draft__snapshot-input { background: #F0E6D6; }
+.ax-draft:has(.ax-leaf[data-profile="warm"]) .ax-draft__snapshot-input { background: #FBF8F2; }
+:root[data-theme="dark"] .ax-draft:has(.ax-leaf[data-profile="warm"]) .ax-draft__snapshot-input { background: #1C1916; }
+:root[data-theme="sepia"] .ax-draft:has(.ax-leaf[data-profile="warm"]) .ax-draft__snapshot-input { background: #E9DCC1; }
+.ax-draft .ax-draft__snapshot-input[readonly] { opacity: 1; }
+.ax-draft .ax-draft__snapshot-actions { display: flex; flex-wrap: wrap; gap: var(--ax-space-3); min-inline-size: 0; }
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button) {
+  box-sizing: border-box; max-inline-size: 100%; min-inline-size: var(--ax-size-row);
+  min-block-size: var(--ax-size-row); block-size: auto; padding-inline: var(--ax-space-4);
+  padding-block: var(--ax-space-2); border-radius: var(--ax-radius-2);
+  font: 600 .875rem/1.25rem "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  letter-spacing: 0; color: var(--ax-color-text-primary); background-color: var(--ax-color-surface-shell);
+  white-space: normal; overflow-wrap: anywhere;
+  transition: background-color 120ms cubic-bezier(.4,0,.2,1) 0ms;
+}
+.ax-draft .ax-draft__snapshot-button.ax-button--secondary { border: 1px solid var(--ax-color-border-control); background-clip: padding-box; }
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button).ax-button--quiet { border: 1px solid transparent; }
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button):not([aria-disabled="true"]):hover {
+  background-color: color-mix(in srgb, var(--ax-color-text-primary) 6%, var(--ax-color-surface-shell));
+}
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button):not([aria-disabled="true"]):active {
+  background-color: color-mix(in srgb, var(--ax-color-text-primary) 14%, var(--ax-color-surface-shell)); transition-duration: 80ms;
+}
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button)[aria-disabled="true"] {
+  opacity: 1; background-color: var(--ax-color-surface-shell); transition: none; cursor: default;
+}
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button)[aria-disabled="true"] > span { opacity: .4; }
+.ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button, .ax-draft__snapshot-input):focus-visible {
+  outline: 2px solid var(--ax-color-focus); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ax-color-surface-shell);
+}
+.ax-draft .ax-draft__snapshot-feedback { padding-inline: var(--ax-space-4); }
+.ax-draft .ax-draft__snapshot-feedback > :not(:empty) + :not(:empty) { margin-block-start: var(--ax-space-3); }
+.ax-draft .ax-draft__snapshot-feedback > .ax-draft__snapshot-actions { padding-block: var(--ax-space-2); }
+.ax-draft .ax-draft__snapshot-status {
+  margin: 0; font-size: .875rem; line-height: 1.25rem; font-weight: 400; letter-spacing: 0;
+  color: var(--ax-color-text-primary);
+}
+.ax-draft .ax-draft__snapshot-status:not(:empty) { border-block-start: 1px solid var(--ax-color-border-hair); padding-block: var(--ax-space-3); }
+.ax-draft .ax-draft__snapshot-status:empty { block-size: 0; padding: 0; border: 0; }
+.ax-draft .ax-draft__snapshot-failure { color: var(--ax-color-text-primary); }
+.ax-draft .ax-draft__snapshot-form .ax-draft__snapshot-failure { display: grid; grid-template-columns: 8px minmax(0,1fr); gap: var(--ax-space-3); align-items: baseline; }
+.ax-draft .ax-draft__snapshot-error-mark { inline-size: 8px; block-size: 8px; background-color: var(--ax-color-text-primary); }
+@media (max-width: 767px) {
+  .ax-draft .ax-draft__snapshot-input { font-size: 1rem; line-height: 1.5rem; }
+  .ax-draft .ax-draft__snapshot-actions { flex-direction: column; }
+  .ax-draft .ax-draft__snapshot-actions > button { inline-size: 100%; }
+}
+@media (pointer: coarse) {
+  .ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button, .ax-draft__snapshot-input) { min-inline-size: var(--ax-size-hit-touch); min-block-size: var(--ax-size-hit-touch); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button) { transition: none; }
+}
+@media (forced-colors: active) {
+  .ax-draft :is(.ax-draft__snapshot-form, .ax-draft__snapshot-feedback, .ax-draft__snapshot-input) {
+    background: Canvas; color: CanvasText; border-color: CanvasText; caret-color: CanvasText; forced-color-adjust: auto;
+  }
+  .ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button) { background-color: ButtonFace; color: ButtonText; transition: none; forced-color-adjust: auto; }
+  .ax-draft .ax-draft__snapshot-button.ax-button--secondary { border-color: ButtonText; }
+  .ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button):not([aria-disabled="true"]):hover:not(:focus-visible) { outline: 1px solid Highlight; outline-offset: -1px; }
+  .ax-draft :is(.ax-draft__snapshot, .ax-draft__snapshot-button, .ax-draft__snapshot-input):focus-visible { outline-color: Highlight; box-shadow: 0 0 0 2px Canvas; }
+  .ax-draft .ax-draft__snapshot-error-mark { background: CanvasText; border: 1px solid CanvasText; }
+}
