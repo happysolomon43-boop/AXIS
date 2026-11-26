@@ -6,7 +6,7 @@ const { chromium } = await import(pathToFileURL(process.env.AXIS_BROWSER_MODULE)
 const part = (page, name) => page.locator('[data-part="' + name + '"]');
 const computed = (locator, property) => locator.evaluate((element, prop) => getComputedStyle(element).getPropertyValue(prop), property);
 const wait = (page, name) => part(page,name).first().waitFor({state:"visible"});
-const rgb = value => value.match(/\d+(?:\.\d+)?/g).slice(0,3).map(Number);
+const rgb = value => value.match(/\d+(?:\.\d+)?/g).slice(0,3).map(Number).map(n=>value.startsWith("color(srgb")?n*255:n);
 const luminance = color => rgb(color).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4).reduce((s,n,i)=>s+n*[.2126,.7152,.0722][i],0);
 const contrast = (a,b) => (Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
 
@@ -26,6 +26,7 @@ await withPreview(async () => {
       await context.addInitScript(id=>localStorage.setItem("axis.lastSeriesId",id),tree.series.id);
       const page=await context.newPage();
       await page.goto("http://localhost:4173/");
+      assert.equal(await page.evaluate(()=>matchMedia("(pointer: coarse)").matches),coarse);
       await wait(page,"chapter-open");
       await part(page,"chapter-open").first().click();
       await wait(page,"editor");
@@ -38,6 +39,7 @@ await withPreview(async () => {
       assert.equal(await part(page,"snapshot-name-input").evaluate(e=>document.activeElement===e),true);
       const label=page.locator(".ax-history__snapshot-name bdi");
       assert.equal(await label.textContent(),longName);
+      assert.ok((await computed(label,"font-family")).includes("system-ui"));
       for(const scale of [16,32]) {
         await page.evaluate(px=>document.documentElement.style.fontSize=px+"px",scale);
         for(const width of [320,768,1024,1261,1262]) {
@@ -83,10 +85,11 @@ await withPreview(async () => {
         if(!coarse) {
           await active.hover();await page.waitForTimeout(150);
           assert.equal(await computed(active,"transition-duration"),"0.12s");
+          assert.ok(contrast(await computed(active,"color"),await computed(active,"background-color"))>=7);
           await page.mouse.down();
           await page.waitForTimeout(100);
           assert.equal(await computed(active,"transition-duration"),"0.08s");
-          // CSS color-mix may serialize as color(srgb ...); numeric contrast is checked in Vitest.
+          assert.ok(contrast(await computed(active,"color"),await computed(active,"background-color"))>=7);
           await page.mouse.up();
           await page.mouse.move(0,0);
         }
@@ -97,7 +100,9 @@ await withPreview(async () => {
       await page.emulateMedia({forcedColors:"active"});
       const selected=part(page,"snapshot-all");
       assert.equal(await computed(selected.locator(".ax-history__snapshot-underline"),"border-bottom-style"),"solid");
-      await selected.focus();
+      await part(page,"snapshot-named").focus();
+      await page.keyboard.press("Tab");
+      assert.equal(await selected.evaluate(e=>document.activeElement===e),true);
       assert.equal(await computed(selected,"outline-width"),"2px");
       await page.emulateMedia({forcedColors:"none",reducedMotion:"no-preference"});
       await part(page,"snapshot-name-input").focus();

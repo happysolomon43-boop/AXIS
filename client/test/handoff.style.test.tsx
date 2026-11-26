@@ -14,7 +14,7 @@ import { syncDraftOnly, syncInBook, syncEdited, syncRevisedSame, syncRevised, wi
 const STYLESHEETS = [
   "../src/binder/binder.css","../src/binder/open.css","../src/binder/sync-layout.css",
   "../src/draft/autosave.css","../src/draft/conflict.css","../src/draft/draft.css",
-  "../src/editor/editor.css","../src/history/history.css","../src/history/restore.css",
+  "../src/editor/editor.css","../src/history/history.css","../src/history/restore.css","../src/history/snapshots.css",
   "../src/onboarding/onboarding.css","../src/shell/drawer.css","../src/shell/shell.css",
   "../src/styles/base.css","../src/styles/binder-sync.css","../src/styles/page.css","../src/styles/tokens.css",
 ].sort();

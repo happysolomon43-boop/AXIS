@@ -128,3 +128,37 @@ test("AXB-0095 AC4 stale ordinary read cannot erase a confirmed snapshot; unmoun
   await act(async()=>later.resolve(errorReply(500,"internal")));
   expect(next.p("snapshot-name-form")).toBeNull();expect(next.calls.map(c=>c.method)).toEqual(["GET","POST","GET"]);
 });
+
+test("AXB-0095 AC3 manual retry only, and authoritative ordinary ineligibility",async()=>{
+  const ui=mount(reply(historyEligible),[{method:"POST",path:namePath,reply:(_,n)=>n===0?errorReply(500,"internal"):reply({snapshot:snapshot(eligible,"Retried")},201)}]);
+  await ui.ready();ui.open();ui.edit("Retried");ui.submit();
+  await waitFor(()=>expect(ui.p("snapshot-name-failure")).toHaveTextContent("The snapshot could not be named."));
+  expect(ui.calls.map(c=>c.method)).toEqual(["GET","POST","GET"]);
+  ui.submit();await waitFor(()=>expect(ui.p("snapshot-name-status")).toHaveTextContent("Snapshot named."));
+  expect(ui.calls.map(c=>c.method)).toEqual(["GET","POST","GET","POST"]);ui.unmount();
+  const pending=deferred<ReturnType<typeof reply>>();
+  const other=mount((_,n)=>reply(n===0?historyEligible:{...historyEligible,versions:historyEligible.versions.map(row=>({...row,can_name_snapshot:false}))}),
+    [{method:"POST",path:namePath,reply:()=>pending.promise}]);
+  await other.ready();other.open();other.edit("Still here");other.submit();other.update(1);
+  await act(async()=>pending.resolve(errorReply(500,"internal")));
+  await waitFor(()=>expect(other.p("snapshot-name-failure")).toHaveTextContent("The snapshot could not be named."));
+  expect(other.p("snapshot-name-input")).toHaveValue("Still here");expect(other.p("snapshot-name-submit")).toBeNull();
+  other.submit();expect(other.calls.filter(c=>c.method==="POST")).toHaveLength(1);
+});
+test("AXB-0095 AC4 ignores settlement that finishes after changing chapters",async()=>{
+  const settle=deferred<ReturnType<typeof reply>>();
+  const nextChapter={...chapterA,id:"ch_00000000000b"};
+  const nextPath="/api/chapters/"+nextChapter.id+"/history";
+  const {calls}=mockApi([{method:"GET",path:historyPath,reply:(_,n)=>n===0?reply(historyEligible):settle.promise},
+    {method:"GET",path:nextPath,reply:reply({chapter:nextChapter,active_version_id:null,versions:[]})},
+    {method:"POST",path:namePath,reply:errorReply(500,"internal")}]);
+  const ui=render(<History key={chapterA.id} chapterId={chapterA.id} seriesId={seriesId}/>);
+  const p=(name:string)=>part(ui.container,name);
+  await waitFor(()=>expect(p("snapshot-name-action")).toBeInTheDocument());fireEvent.click(p("snapshot-name-action"));fireEvent.submit(p("snapshot-name-form"));
+  await waitFor(()=>expect(calls.filter(c=>c.path===historyPath)).toHaveLength(2));
+  ui.rerender(<History key={nextChapter.id} chapterId={nextChapter.id} seriesId={seriesId}/>);
+  await waitFor(()=>expect(p("empty")).toBeInTheDocument());p("snapshot-all").focus();
+  await act(async()=>settle.resolve(reply(namedHistory())));
+  expect(p("snapshot-all")).toHaveFocus();expect(p("snapshot-name-form")).toBeNull();expect(p("snapshot-name")).toBeNull();
+  expect(calls.map(c=>c.path)).toEqual([historyPath,namePath,historyPath,nextPath]);
+});

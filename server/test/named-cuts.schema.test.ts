@@ -33,11 +33,19 @@ test("AXB-0091 AC1 down and reapply preserve predecessor data in one isolated tr
       await client.query(down); await checkDown(); await reapply();
       expect(await definitions()).toEqual(expected);
       await client.query(insert, [first.chapter.id, saved.version.id, f.seriesId, saved.version.l_seq, "Before the bell"]);
+      const exported = (await client.query("SELECT * FROM named_cuts")).rows;
+      expect(exported).toHaveLength((await client.query("SELECT count(*)::int AS n FROM named_cuts")).rows[0].n);
+      expect(exported).toHaveLength(1);
       await client.query(down); await checkDown(); await reapply();
       expect(await migrationRows()).toEqual(original);
       expect(await definitions()).toEqual(expected);
       expect((await client.query("SELECT * FROM named_cuts")).rows).toEqual([]);
       expect((await client.query("SELECT to_regclass('named_cuts_ledger_idx')::text AS name")).rows).toEqual([{name:"named_cuts_ledger_idx"}]);
+      for (const row of exported) {
+        await client.query("INSERT INTO named_cuts(chapter_id,version_id,series_id,l_seq,kind,label,pack_pins,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+          [row.chapter_id,row.version_id,row.series_id,row.l_seq,row.kind,row.label,JSON.stringify(row.pack_pins),row.created_at]);
+      }
+      expect((await client.query("SELECT * FROM named_cuts")).rows).toEqual(exported);
     } finally { try { await client.query("ROLLBACK"); } finally { client.release(); } }
   } finally { await f.app.close(); }
 });

@@ -59,6 +59,8 @@ jobs:
         run: |
           npm run migrate
           test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 12
+          psql "$DATABASE_URL" -Atc 'SELECT row_to_json(named_cuts) FROM named_cuts' > "$RUNNER_TEMP/named_cuts-backup.jsonl"
+          test "$(wc -l < "$RUNNER_TEMP/named_cuts-backup.jsonl" | tr -d ' ')" = "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM named_cuts')"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'TRUNCATE series CASCADE'
           for f in $(find db/rollback -name '*.down.sql' | sort -r); do
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f"

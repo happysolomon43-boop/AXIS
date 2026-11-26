@@ -55,7 +55,9 @@ test("AC1 draws a quiet Restore action and inline status in each state", async (
   await act(async () => { post.resolve(restoreReply); });
   const status = ui.part("restore-status");
   expect(status).toHaveClass("ax-history__note", "ax-history__result");
-  expect(status.nextElementSibling).toBe(ui.part("version-list"));
+  expect(status.nextElementSibling).toBe(ui.part("snapshot-filter"));
+  expect(ui.part("snapshot-filter").nextElementSibling).toBe(ui.part("snapshot-name-status"));
+  expect(ui.part("snapshot-name-status").nextElementSibling).toBe(ui.part("version-list"));
   expect(ui.root).not.toHaveAttribute("style");
   expect(ui.root.querySelector("[style]")).toBeNull();
   ui.unmount();
@@ -63,7 +65,9 @@ test("AC1 draws a quiet Restore action and inline status in each state", async (
   const failure = await mount(internalEnvelope);
   await act(async () => { fireEvent.click(failure.part("version-restore")); });
   expect(failure.part("restore-failure")).toHaveClass("ax-history__note", "ax-history__result");
-  expect(failure.part("restore-failure").nextElementSibling).toBe(failure.part("version-list"));
+  expect(failure.part("restore-failure").nextElementSibling).toBe(failure.part("snapshot-filter"));
+  expect(failure.part("snapshot-filter").nextElementSibling).toBe(failure.part("snapshot-name-status"));
+  expect(failure.part("snapshot-name-status").nextElementSibling).toBe(failure.part("version-list"));
 });
 
 test("AC2 declares exactly the Restore styles and meets the room contrast floor in every theme", () => {

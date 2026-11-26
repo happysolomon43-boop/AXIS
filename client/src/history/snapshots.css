@@ -4,6 +4,7 @@
 .ax-history__snapshot-name,
 .ax-history__snapshot-cut,
 .ax-history__snapshot-capture,
+.ax-history__snapshot-empty-group,
 .ax-history__snapshot-empty,
 .ax-history__snapshot-status {
   box-sizing: border-box;
@@ -87,7 +88,7 @@
   margin-inline: var(--ax-space-5) 0;
   max-inline-size: calc(100% - var(--ax-space-5));
 }
-.ax-history__snapshot-empty {
+.ax-history__snapshot-empty-group {
   margin-block-start: var(--ax-space-8);
   /* Drawer body already has a 16px inset. */
   padding-inline: var(--ax-space-3);
@@ -99,8 +100,8 @@
   font-size: .875rem;
   line-height: 1.25rem;
 }
-.ax-history__snapshot-empty p { margin: 0; }
-.ax-history__snapshot-empty .ax-history__snapshot-action { margin: 0; max-inline-size: 100%; }
+.ax-history__snapshot-empty { margin: 0; }
+.ax-history__snapshot-empty-group .ax-history__snapshot-action { margin: 0; max-inline-size: 100%; }
 .ax-history__snapshot-name {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -113,8 +114,8 @@
 .ax-history__snapshot-key {
   display: grid;
   place-items: center;
-  min-inline-size: 20px;
-  min-block-size: 20px;
+  inline-size: max(20px, calc(1rem + 2px));
+  block-size: max(20px, calc(1rem + 2px));
   border: 1px solid var(--ax-color-border-control);
   border-radius: var(--ax-radius-1);
   font-family: var(--ax-type-family-mono);
@@ -224,6 +225,7 @@
   .ax-history__snapshot-action,
   .ax-history__snapshot-form .ax-button,
   .ax-history__snapshot-label,
+  .ax-history__snapshot-empty-group,
   .ax-history__snapshot-empty,
   .ax-history__snapshot-status { font-size: .9375rem; line-height: 1.375rem; }
   .ax-history__snapshot-form .ax-input { font-size: 1rem; line-height: 1.5rem; }

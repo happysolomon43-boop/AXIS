@@ -162,7 +162,11 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     else if (next.kind === "cancel") cancel.current?.focus();
     else if (next.kind === "opener") {
       if (opener.current?.isConnected) opener.current.focus();
-      else root.current?.focus();
+      else {
+        const action = Array.from(root.current?.querySelectorAll<HTMLButtonElement>('[data-part="snapshot-name-action"]') ?? [])
+          .find(button => button.dataset.targetVersion === next.id);
+        (action ?? root.current)?.focus();
+      }
     } else {
       const row = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-version-id]") ?? [])
         .find(el => el.dataset.versionId === next.id);
@@ -293,7 +297,7 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   }
   function closeNaming() {
     if (!namingRef.current || namingRef.current.phase === "pending") return;
-    focusNext.current = { kind: "opener" };
+    focusNext.current = { kind: "opener", id: namingRef.current.id };
     setNameStatus("");
     changeNaming(null);
   }
@@ -330,7 +334,7 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     try {
       const settled = await getHistory(target.chapter);
       if (!stillLive()) return;
-      const row = settled.versions.find(item => item.id === target.id && item.chapter_id === target.chapter && item.l_seq === target.cut);
+      const row = settled.chapter.id === target.chapter ? settled.versions.find(item => item.id === target.id && item.chapter_id === target.chapter && item.l_seq === target.cut) : undefined;
       snapshot = row ? savedSnapshot(row) : null;
       confirmedIneligible = !!row && row.can_name_snapshot === false;
     } catch { /* Keep the original write failure. */ }
@@ -354,7 +358,7 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   const targetEligible = list.state === "ready" && naming && list.history.versions.some(row =>
     row.id === naming.id && row.l_seq === naming.cut && eligible(row));
   function nameAction(item: HistoryItem) {
-    return <button type="button" data-part="snapshot-name-action"
+    return <button type="button" data-part="snapshot-name-action" data-target-version={item.id}
       className="ax-button ax-button--quiet ax-history__snapshot-action"
       aria-label={copy["history.snapshot.actionLabel"](item.version_no)} aria-disabled={busyNaming || undefined}
       onClick={event => openNaming(item, event.currentTarget)}><span>{copy["history.snapshot.action"]}</span></button>;
@@ -408,8 +412,8 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
         </form>}
         <p data-part="snapshot-name-status" role="status" className="ax-history__snapshot-status">{nameStatus}</p>
         {visible.length === 0
-          ? filter === "named" ? <div className="ax-history__snapshot-empty">
-              <p data-part="snapshot-empty">{copy["history.snapshot.empty"]}</p>
+          ? filter === "named" ? <div className="ax-history__snapshot-empty-group">
+              <p className="ax-history__snapshot-empty" data-part="snapshot-empty">{copy["history.snapshot.empty"]}</p>
               {newest && eligible(newest) && nameAction(newest)}
             </div> : <p className="ax-history__empty" data-part="empty">{copy["history.empty"]}</p>
           : <ul className="ax-history__list" data-part="version-list">
