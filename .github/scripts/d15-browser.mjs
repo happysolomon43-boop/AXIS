@@ -22,7 +22,8 @@ await withPreview(async()=>{
    const context=await browser.newContext({viewport:{width:1262,height:900},hasTouch:coarse});
    await context.addInitScript(id=>localStorage.setItem("axis.lastSeriesId",id),tree.series.id);
    const page=await context.newPage();await page.goto("http://localhost:4173/");
-   await part(page,"chapter-open").first().click();await part(page,"editor").waitFor();
+   assert.equal(await page.evaluate(()=>matchMedia("(pointer: coarse)").matches),coarse);
+   const chapterOpen=part(page,"chapter-open").first();await chapterOpen.waitFor();await chapterOpen.focus();await page.keyboard.press("Enter");await part(page,"editor").waitFor();
    const editor=await part(page,"editor").elementHandle();
    await part(page,"history-door").click();await part(page,"snapshot-filter").waitFor();
    const row=page.locator('[data-version-id="'+b.version.id+'"]');
