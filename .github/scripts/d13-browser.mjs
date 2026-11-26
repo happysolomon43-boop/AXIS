@@ -19,7 +19,7 @@ await withPreview(async () => {
   const named=await request(4,"POST","/series/"+tree.series.id+"/named-cuts",201,{kind:"snapshot",chapter_id:chapter,version_id:saved.version.id,name:longName});
   assert.equal(named.snapshot.name,longName);
   const newest=await request(5,"POST",path+"/versions",201,{content:"The gate opened.",parent_version:saved.version.id});
-  const browser=await chromium.launch({headless:true});
+  const browser=await chromium.launch({headless:true,...(process.env.AXIS_BROWSER_EXECUTABLE?{executablePath:process.env.AXIS_BROWSER_EXECUTABLE}:{})});
   try {
     for(const coarse of [false,true]) {
       const context=await browser.newContext({viewport:{width:1262,height:900},hasTouch:coarse});

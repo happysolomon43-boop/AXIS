@@ -289,7 +289,7 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   }
 
   function openNaming(item: HistoryItem, button: HTMLButtonElement) {
-    if (!eligible(item) || namingRef.current?.phase === "pending") return;
+    if (!eligible(item) || namingRef.current?.phase === "pending" || namingRef.current?.phase === "settled") return;
     opener.current = button;
     focusNext.current = { kind: "input" };
     setNameStatus("");
@@ -360,7 +360,7 @@ export function History({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   function nameAction(item: HistoryItem) {
     return <button type="button" data-part="snapshot-name-action" data-target-version={item.id}
       className="ax-button ax-button--quiet ax-history__snapshot-action"
-      aria-label={copy["history.snapshot.actionLabel"](item.version_no)} aria-disabled={busyNaming || undefined}
+      aria-label={copy["history.snapshot.actionLabel"](item.version_no)} aria-disabled={busyNaming || naming?.phase === "settled" || undefined}
       onClick={event => openNaming(item, event.currentTarget)}><span>{copy["history.snapshot.action"]}</span></button>;
   }
   return (

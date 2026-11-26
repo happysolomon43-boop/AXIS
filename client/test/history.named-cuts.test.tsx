@@ -88,6 +88,7 @@ test("AXB-0095 AC3 lost reply settles once and preserves attempted text read-onl
   expect(ui.p("snapshot-name-form")).toHaveTextContent("Authoritative name");expect(ui.p("snapshot-name-input")).toHaveValue("Attempted name");
   expect(ui.p("snapshot-name-input")).toHaveAttribute("readonly");expect(ui.p("snapshot-name-submit")).toBeNull();
   expect(ui.p("snapshot-name-status")).toHaveTextContent("This version is named.");expect(ui.p("snapshot-name-cancel")).toHaveFocus();
+  const another=ui.p("snapshot-name-action");if(another){expect(another).toHaveAttribute("aria-disabled","true");fireEvent.click(another);expect(ui.p("snapshot-name-input")).toHaveValue("Attempted name");}
   expect(ui.calls.map(c=>c.method)).toEqual(["GET","POST","GET"]);
 });
 test("AXB-0095 AC3 fallback alert families, mismatched cut, explicit retry and focus",async()=>{

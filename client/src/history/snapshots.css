@@ -262,6 +262,17 @@
     color: ButtonText;
   }
   .ax-history__snapshot-form .ax-button--secondary { border-color: ButtonText; }
+  .ax-history__snapshot-form .ax-input { caret-color: CanvasText; }
+  .ax-history__snapshot-form .ax-field-label,
+  .ax-history__snapshot-version,
+  .ax-history__snapshot-hint,
+  .ax-history__snapshot-failure,
+  .ax-history__snapshot-label,
+  .ax-history__snapshot-source,
+  .ax-history__snapshot-cut,
+  .ax-history__snapshot-capture p,
+  .ax-history__snapshot-status,
+  .ax-history__snapshot-empty-group { color: CanvasText; }
   .ax-history__snapshot-underline { border-block-end-color: Highlight; }
   .ax-history__snapshot-filter-button:focus-visible,
   .ax-history__snapshot-action:focus-visible,
