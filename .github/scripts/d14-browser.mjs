@@ -18,7 +18,7 @@ await withPreview(async()=>{
    const page=await context.newPage();await page.goto("http://localhost:4173/");
    await part(page,"chapter-open").first().click();await part(page,"editor").waitFor();
    const editor=await part(page,"editor").elementHandle();
-   const trigger=part(page,"snapshot"),input=part(page,"snapshot-name"),form=part(page,"snapshot-form"),submit=part(page,"snapshot-submit");
+   const trigger=part(page,"snapshot"),input=page.locator('[data-surface="draft"] input[data-part="snapshot-name"]'),form=part(page,"snapshot-form"),submit=part(page,"snapshot-submit");
    await trigger.focus();await page.keyboard.press("Enter");await input.waitFor();assert.equal(await input.evaluate(e=>document.activeElement===e),true);
    const long="א".repeat(199)+"😀";await input.fill(long);
    await part(page,"history-door").click();await part(page,"snapshot-filter").waitFor();
