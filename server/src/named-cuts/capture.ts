@@ -5,12 +5,13 @@ import { checkContent } from "../corpus/validate.js";
 import { AppError } from "../errors.js";
 import { readChapterSync } from "../sync/read.js";
 import type { ChapterSync } from "../sync/state.js";
+import { readLabelPair } from "./label-lifecycle.js";
 import { columns, defaultSnapshotName, dto, invalidName, type NamedSnapshot, type StoredSnapshot } from "./repository.js";
 
 export const uuidPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 export type CaptureRequest = { request_id: string; content: string; base_version: string; base_revision: number; name?: string };
 export type CaptureResult = { request_id: string; snapshot: NamedSnapshot; version: VersionRow; created_version: boolean; draft_current: boolean; active_version_id: string | null; sync: ChapterSync };
-type Receipt = { chapter_id: string; request_id: string; request_hash: string; captured_version_id: string; draft_base_version_id: string; draft_base_revision: number; created_version: boolean };
+type Receipt = { snapshot_id: string; chapter_id: string; request_id: string; request_hash: string; captured_version_id: string; draft_base_version_id: string; draft_base_revision: number; created_version: boolean };
 type StoredVersion = Omit<VersionRow, "l_seq"> & { l_seq: string };
 type Coordinates = { id: string; revision: number };
 const versionColumns = "id, chapter_id, version_no, source, text_hash, hints_hash, parent_version, l_seq";
@@ -42,14 +43,16 @@ async function receiptFor(client: PoolClient, chapterId: string, requestId: stri
   return (await client.query<Receipt>("SELECT * FROM snapshot_capture_requests WHERE chapter_id=$1 AND request_id=$2", [chapterId, requestId])).rows[0];
 }
 export async function projectCapture(client: PoolClient, receipt: Receipt): Promise<CaptureResult> {
-  const { rows: [version] } = await client.query<StoredVersion>(
-    `SELECT ${versionColumns} FROM chapter_versions WHERE chapter_id=$1 AND id=$2`, [receipt.chapter_id, receipt.captured_version_id]);
-  const { rows: [snapshot] } = await client.query<StoredSnapshot>(
-    `SELECT ${columns} FROM named_cuts WHERE chapter_id=$1 AND version_id=$2`, [receipt.chapter_id, receipt.captured_version_id]);
-  if (!version || !snapshot || snapshot.l_seq !== version.l_seq) throw new Error("Missing capture reference");
+  const { rows: [version] } = await client.query<StoredVersion & { series_id: string }>(
+    `SELECT series_id, ${versionColumns} FROM chapter_versions WHERE chapter_id=$1 AND id=$2`, [receipt.chapter_id, receipt.captured_version_id]);
+  if (!version) throw new Error("Missing capture reference");
+  const {marker,label:snapshot}=await readLabelPair(client,receipt.chapter_id,receipt.captured_version_id,version);
+  if (!marker) throw new Error("Missing capture lifecycle");
+  if (!snapshot || marker.snapshot_id!==receipt.snapshot_id) throw conflict("snapshot_removed","Snapshot name was removed");
+  const {series_id: _seriesId,...publicVersion}=version;
   const current = await coordinates(client, receipt.chapter_id);
   return {
-    request_id: receipt.request_id, snapshot: dto(snapshot), version: { ...version, l_seq: Number(version.l_seq) },
+    request_id: receipt.request_id, snapshot: dto(snapshot), version: { ...publicVersion, l_seq: Number(version.l_seq) },
     created_version: receipt.created_version,
     draft_current: current?.id === receipt.draft_base_version_id && current.revision === receipt.draft_base_revision,
     active_version_id: await readActiveVersionId(client, receipt.chapter_id),
@@ -126,11 +129,15 @@ export function captureChapterSnapshot(pool: Pool, actorId: string, chapterId: s
       await client.query("INSERT INTO named_cuts (chapter_id,version_id,series_id,l_seq,label) VALUES($1,$2,$3,$4,$5)",
         [chapterId, versionId, selected.series_id, selected.l_seq, label]);
     }
+    const selectedVersion=(await client.query<{series_id:string;l_seq:string}>("SELECT series_id,l_seq FROM chapter_versions WHERE chapter_id=$1 AND id=$2",[chapterId,versionId])).rows[0];
+    if (!selectedVersion) throw new Error("Missing captured version");
+    const pair=await readLabelPair(client,chapterId,versionId,selectedVersion);
+    if (!pair.marker || !pair.label) throw new Error("Missing captured label");
     const after = await coordinates(client, chapterId);
     if (!after) throw new Error("Missing after state");
     const { rows: [receipt] } = await client.query<Receipt>(
-      `INSERT INTO snapshot_capture_requests(chapter_id,request_id,request_hash,captured_version_id,draft_base_version_id,draft_base_revision,created_version)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [chapterId, body.request_id, hash, versionId, after.id, after.revision, created]);
+      `INSERT INTO snapshot_capture_requests(chapter_id,request_id,request_hash,captured_version_id,draft_base_version_id,draft_base_revision,created_version,snapshot_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [chapterId, body.request_id, hash, versionId, after.id, after.revision, created,pair.marker.snapshot_id]);
     if (!receipt) throw new Error("Missing receipt");
     return { status: 201, capture: await projectCapture(client, receipt) };
   });

@@ -10,6 +10,7 @@ import { registerCorpusRoutes } from "./corpus/routes.js";
 import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
 import { registerPullBackRoutes } from "./pullback/routes.js";
+import { registerSnapshotLabelRoutes } from "./named-cuts/label-routes.js";
 import { registerSnapshotCaptureRoutes } from "./named-cuts/capture-routes.js";
 import { registerNamedCutRoutes } from "./named-cuts/routes.js";
 import { registerSeriesRoutes } from "./series/routes.js";
@@ -92,5 +93,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerVersionRoutes(app, deps);
   registerPullBackRoutes(app, deps);
   registerSnapshotCaptureRoutes(app, deps);
+  registerSnapshotLabelRoutes(app, deps);
   return app;
 }
