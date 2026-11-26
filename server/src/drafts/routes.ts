@@ -5,6 +5,7 @@ import { requireUser } from "../auth.js";
 import { findOwnedChapter } from "../corpus/repo.js";
 import { checkContent } from "../corpus/validate.js";
 import { AppError } from "../errors.js";
+import { readChapterSync } from "../sync/read.js";
 import { getDraft, putDraft, type DraftInput } from "./repository.js";
 
 const draftPath = "/chapters/:id(^[\\s\\S]{1,100}$)/draft";
@@ -41,8 +42,15 @@ export function registerDraftRoutes(app: FastifyInstance, { pool }: Deps): void 
     },
   );
 
-  app.get<{ Params: Params }>(draftPath, async (request) => {
+  app.get<{ Params: Params }>(draftPath, async (request, reply) => {
     const chapter = await ownedChapter(pool, requireUser(request), request.params.id);
+    const url = request.raw.url ?? "";
+    const separator = url.indexOf("?");
+    const views = new URLSearchParams(separator === -1 ? "" : url.slice(separator + 1)).getAll("view");
+    if (views.length === 1 && views[0] === "sync") {
+      const sync = await readChapterSync(pool, chapter.id);
+      return reply.header("Cache-Control", "no-store").code(200).send({ sync });
+    }
     return getDraft(pool, chapter);
   });
 }
