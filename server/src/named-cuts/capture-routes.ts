@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
 import { AppError } from "../errors.js";
-import { captureChapterSnapshot, uuidPattern, type CaptureRequest } from "./capture.js";
+import { captureChapterSnapshot, readSnapshotCapture, uuidPattern, type CaptureRequest } from "./capture.js";
 
 const path = "/chapters/:id(^[\\s\\S]{1,100}$)/snapshots";
 function guard(id: string) {
@@ -31,6 +31,15 @@ export function registerSnapshotCaptureRoutes(app: FastifyInstance, { pool }: De
     try {
       const { status, capture } = await captureChapterSnapshot(pool, actor, id, request.body);
       return reply.header("Cache-Control", "no-store").code(status).send({ capture });
+    } catch (error) { redact(error); }
+  });
+  app.get<{ Params: { id: string; requestId: string } }>(path + "/:requestId(^[\\s\\S]{1,100}$)", async (request, reply) => {
+    const actor = requireUser(request);
+    const { id, requestId } = request.params;
+    guard(id);
+    try {
+      const capture = await readSnapshotCapture(pool, actor, id, requestId);
+      return reply.header("Cache-Control", "no-store").send({ capture });
     } catch (error) { redact(error); }
   });
 }

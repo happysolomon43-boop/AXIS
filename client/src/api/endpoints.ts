@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import type { CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -98,4 +98,42 @@ export async function nameSnapshot(seriesId: string, chapterId: string, versionI
   });
   return exactObject(result, ["snapshot"]) && validNamedSnapshot(result.snapshot, chapterId, versionId)
     ? result.snapshot : null;
+}
+
+const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const versionId = (v: unknown): v is string => typeof v === "string" && v.length === 16 && /^ver_[0-9a-f]{12}$/.test(v);
+const validChapterId = (v: unknown): v is string => typeof v === "string" && v.length === 15 && /^ch_[0-9a-f]{12}$/.test(v);
+const hash = (v: unknown): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]{64}$/.test(v);
+const positive = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0;
+const sources = ["draft_edit","send","reupload","restore","import","bulk_replace","checkpoint"];
+function captureVersion(value: unknown, chapterId: string): value is VersionRow {
+  if (!exactObject(value, ["id","chapter_id","version_no","source","text_hash","hints_hash","parent_version","l_seq"])) return false;
+  return versionId(value.id) && value.chapter_id === chapterId && validChapterId(value.chapter_id)
+    && positive(value.version_no) && positive(value.l_seq) && typeof value.source === "string" && sources.includes(value.source)
+    && hash(value.text_hash) && hash(value.hints_hash) && (value.parent_version === null || versionId(value.parent_version));
+}
+function validCaptureSync(value: unknown): value is ChapterSync {
+  if (!exactObject(value, ["state","same"]) || typeof value.same !== "boolean") return false;
+  return (value.state === "draft_only" && !value.same) || (value.state === "in_book" && value.same)
+    || (value.state === "edited" && !value.same) || value.state === "being_revised";
+}
+function decodeCapture(result: unknown, chapterId: string, requestId: string, base?: string): CaptureResult | null {
+  if (!exactObject(result, ["capture"]) || !exactObject(result.capture, ["request_id","snapshot","version","created_version","draft_current","active_version_id","sync"])) return null;
+  const c = result.capture;
+  if (c.request_id !== requestId || requestId.length !== 36 || !uuidV4.test(requestId) ||
+    !captureVersion(c.version, chapterId) || !validNamedSnapshot(c.snapshot, chapterId, c.version.id) ||
+    c.snapshot.l_seq !== c.version.l_seq || typeof c.created_version !== "boolean" || typeof c.draft_current !== "boolean" ||
+    !(c.active_version_id === null || versionId(c.active_version_id)) || !validCaptureSync(c.sync)) return null;
+  if (c.created_version && (c.version.source !== "draft_edit" || c.version.parent_version === null || (base !== undefined && c.version.parent_version !== base))) return null;
+  return { request_id: requestId, snapshot: c.snapshot, version: c.version, created_version: c.created_version, draft_current: c.draft_current, active_version_id: c.active_version_id, sync: c.sync };
+}
+export async function captureSnapshot(chapterId: string, body: CaptureRequest): Promise<CaptureResult | null> {
+  const {request_id, content, base_version, base_revision, name} = body;
+  const result = await request<unknown>("POST", `/chapters/${encodeURIComponent(chapterId)}/snapshots`,
+    {request_id, content, base_version, base_revision, ...(name === undefined ? {} : { name })});
+  return decodeCapture(result, chapterId, request_id, base_version);
+}
+export async function getSnapshotCapture(chapterId: string, requestId: string): Promise<CaptureResult | null> {
+  const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(chapterId)}/snapshots/${encodeURIComponent(requestId)}`);
+  return decodeCapture(result, chapterId, requestId);
 }

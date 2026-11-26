@@ -135,3 +135,12 @@ export function captureChapterSnapshot(pool: Pool, actorId: string, chapterId: s
     return { status: 201, capture: await projectCapture(client, receipt) };
   });
 }
+
+export function readSnapshotCapture(pool: Pool, actorId: string, chapterId: string, requestId: string): Promise<CaptureResult | null> {
+  return transaction(pool, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY", async client => {
+    if (!await findOwnedChapter(client, actorId, chapterId)) throw notFound();
+    if (requestId.length !== 36 || !new RegExp(uuidPattern).test(requestId)) throw invalid("/requestId", "must be a lowercase UUID v4");
+    const receipt = await receiptFor(client, chapterId, requestId);
+    return receipt ? projectCapture(client, receipt) : null;
+  });
+}
