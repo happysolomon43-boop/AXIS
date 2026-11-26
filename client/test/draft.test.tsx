@@ -4,6 +4,8 @@ import type { EditorView } from "prosemirror-view";
 import { Draft } from "../src/draft/Draft";
 import { deferred, internalError, mockApi } from "./helpers";
 import { b, c, d, chapterA, chapterPath, detailText, detailSent, reply, writtenC, verRow } from "./d06.fixtures";
+import type { CaptureRequest } from "../src/api/types";
+import { capturePath, captureReply } from "./snapshotCaptureFixtures";
 import { noDraftRead, draftPath } from "./draftFixtures";
 
 function chapterCalls(calls: import("./helpers").Call[]) {
@@ -63,11 +65,12 @@ test("AXB-0040 AC2 saves only changes, locks during writes, updates parents and 
   const { calls: allCalls } = mockApi([
     noDraftRead,
     { method: "GET", path: chapterPath, reply: reply(detailText) },
-    { method: "POST", path: `${chapterPath}/versions`, reply: (_, n) => n === 0 ? pending.promise : reply({ ...writtenC(null), version: verRow(d, 4, c) }, 201) },
+    { method: "POST", path: `${chapterPath}/versions`, reply: () => pending.promise },
+    { method: "POST", path: capturePath, reply: call => captureReply(call.body as CaptureRequest,true,true,verRow(d,4,c)) },
   ]);
   const calls = () => chapterCalls(allCalls);
   const m = mount(); await ready(m);
-  expect(chord({ code: "KeyS", ctrlKey: true }).defaultPrevented).toBe(true); expect(calls()).toHaveLength(1);
+  fireEvent.click(m.part("save")); expect(calls()).toHaveLength(1);
   edit(m); expect(m.root).toHaveAttribute("data-state", "unsaved"); expect(m.onLockChange.mock.calls).toEqual([[true]]);
   expect(m.part("save")).toHaveAttribute("aria-disabled", "false"); expect(unload()).toBe(true);
   fireEvent.click(m.part("save"));
@@ -75,16 +78,16 @@ test("AXB-0040 AC2 saves only changes, locks during writes, updates parents and 
   expect(m.root).toHaveAttribute("data-state", "saving"); expect(m.part("editor")).toHaveAttribute("contenteditable", "false");
   expect(m.part("save")).toHaveAttribute("aria-disabled", "true"); expect(m.part("send")).toHaveAttribute("aria-disabled", "true");
   const doc = m.view().state.doc; edit(m, "ignored"); expect(m.view().state.doc.eq(doc)).toBe(true);
-  fireEvent.click(m.part("save")); fireEvent.click(m.part("send")); expect(calls()).toHaveLength(2);
+  fireEvent.click(m.part("save")); fireEvent.click(m.part("send")); expect(chord({ code: "KeyS", ctrlKey: true }).defaultPrevented).toBe(true); expect(calls()).toHaveLength(2);
   await act(async () => pending.resolve(reply(writtenC(null), 201))); await ready(m);
   expect(m.part("editor")).toHaveAttribute("contenteditable", "true"); expect(m.part("editor")).toHaveFocus();
   expect(m.onWritten).toHaveBeenCalledTimes(1); expect(m.onLockChange.mock.calls).toEqual([[true], [false]]);
   expect(m.part("version-chip")).toHaveTextContent("Draft only"); expect(m.part("status")).toHaveAttribute("data-outcome", "saved");
   expect(calls()).toHaveLength(2); expect(unload()).toBe(false);
-  expect(chord({ code: "KeyS", ctrlKey: true }).defaultPrevented).toBe(true); expect(calls()).toHaveLength(2);
+  fireEvent.click(m.part("save")); expect(calls()).toHaveLength(2);
   edit(m, "?"); expect(m.part("status")).not.toHaveAttribute("data-outcome");
   expect(chord({ code: "KeyS", ctrlKey: true }).defaultPrevented).toBe(true);
-  expect(calls()[2].body).toEqual({ content: `${text}!?`, parent_version: c }); await ready(m);
+  expect(calls()[2]).toMatchObject({path:capturePath,body:{content:`${text}!?`,base_version:c,base_revision:0}}); await waitFor(()=>expect(m.part("snapshot-status")).toHaveTextContent("Snapshot saved."));
 });
 
 test("AXB-0040 AC3 sends a clean unsent version, then only valid dirty Send chords", async () => {

@@ -16,7 +16,7 @@ const STYLESHEETS = [
   "../src/draft/autosave.css","../src/draft/conflict.css","../src/draft/draft.css",
   "../src/editor/editor.css","../src/history/history.css","../src/history/restore.css","../src/history/snapshots.css",
   "../src/onboarding/onboarding.css","../src/shell/drawer.css","../src/shell/shell.css",
-  "../src/styles/base.css","../src/styles/binder-sync.css","../src/styles/page.css","../src/styles/tokens.css",
+  "../src/styles/base.css","../src/styles/binder-sync.css","../src/styles/draft-snapshot.css","../src/styles/page.css","../src/styles/tokens.css",
 ].sort();
 const unauthorizedEnvelope={status:401,body:{error:{code:"auth_required",message:"Missing or invalid X-Axis-User header",details:null}}};
 const A=chapterA.id, meta=draftPath+"?view=sync", pull=chapterPath+"/pull-back";
@@ -135,7 +135,7 @@ test("AXB-0089 AC4 stylesheet inventory, exact chip rule, import order, contrast
   const declarations=css.match(/\.ax-binder__sync\s*\{([^}]+)\}/)![1].split(";").map(s=>s.trim()).filter(Boolean);
   expect(declarations).toEqual(["box-sizing: border-box","max-inline-size: 100%","block-size: auto","min-block-size: 20px","white-space: normal","overflow-wrap: anywhere","text-align: start","color: var(--ax-color-text-secondary)"]);
   const imports=[...draftSource.matchAll(/import\s+["']([^"']+\.css)["']/g)].map(m=>m[1]);
-  expect(imports.at(-1)).toBe("../styles/binder-sync.css");
+  expect(imports.slice(-2)).toEqual(["../styles/binder-sync.css","../styles/draft-snapshot.css"]);
   expect(Object.keys(import.meta.glob("../src/**/*.css")).sort()).toEqual(STYLESHEETS);
   for(const [ink,shellColor,raised,tint,floors] of [
     ["#4A4D52","#ECEBE6","#FCFCFA","#DCE7F2",[7,8,6]],

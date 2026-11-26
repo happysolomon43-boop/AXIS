@@ -2,12 +2,13 @@ import "./draft.css";
 import "./autosave.css";
 import "./conflict.css";
 import "../styles/binder-sync.css";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import "../styles/draft-snapshot.css";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Node } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
-import { getChapter, getDraft, getDraftSync, putDraft, saveVersion, sendChapter } from "../api/endpoints";
+import { captureSnapshot, getSnapshotCapture, getChapter, getDraft, getDraftSync, putDraft, saveVersion, sendChapter } from "../api/endpoints";
 import { ApiError } from "../api/http";
-import type { ChapterDetail, ChapterSync, DraftDetail } from "../api/types";
+import type { CaptureRequest, CaptureResult, ChapterDetail, ChapterSync, DraftDetail } from "../api/types";
 import { syncChip } from "../binder/format";
 import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
@@ -28,6 +29,9 @@ type Ready = {
   state: "ready";
   blocks: EditorBlock[];
   baselineDoc: Node;
+  baselineRaw: string;
+  persistedRaw: string | null;
+  capturing: boolean;
   doc: Node;
   loadedVersionId: string;
   activeVersionId: string | null;
@@ -47,15 +51,29 @@ type Ready = {
   failedAt: number | null;
 };
 type Snapshot = { state: "loading" } | { state: "failed" } | Ready;
+type CapturePhase = "idle" | "taking" | "checking" | "unknown" | "manual";
+type CaptureUI = { form: boolean; name: string; phase: CapturePhase; status: string; failure: string; invalid: boolean; conflict: boolean };
+type CaptureAttempt = { number: number; doc: Node; name?: string; body: CaptureRequest | null; end: () => void };
+const initialCapture: CaptureUI = { form:false, name:"", phase:"idle", status:"", failure:"", invalid:false, conflict:false };
+function captureEligible(s: Snapshot): s is Ready { return s.state === "ready" && s.phase === null && !s.stopped && !s.capturing; }
+function detailsObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function hasDetail(error: ApiError, path: string, message?: string) {
+  const errors = detailsObject(error.details)?.errors;
+  return Array.isArray(errors) && errors.some(item => {
+    const e = detailsObject(item); return e?.path === path && (message === undefined || e.message === message);
+  });
+}
 
 function dirty(s: Ready) { return !s.doc.eq(s.baselineDoc); }
 function kept(s: Ready) { return s.persistedDoc !== null && s.doc.eq(s.persistedDoc); }
 function due(s: Ready) { return s.persistedDoc === null ? dirty(s) : !kept(s); }
 function locked(s: Snapshot) {
-  return s.state === "ready" && (s.phase !== null || (dirty(s) && !kept(s)));
+  return s.state === "ready" && (s.capturing || s.phase !== null || (dirty(s) && !kept(s)));
 }
 function busy(s: Ready) {
-  return s.phase === "saving" || s.phase === "sending" || s.phase === "checking" || s.phase === "reloading";
+  return s.capturing || s.phase === "saving" || s.phase === "sending" || s.phase === "checking" || s.phase === "reloading";
 }
 function keepMineActive(s: Ready) { return s.stopped && !busy(s) && dirty(s); }
 function active(s: Ready, kind: Write["kind"]) {
@@ -79,6 +97,7 @@ function fromRead(detail: ChapterDetail, { draft, sync }: DraftDetail): Ready {
   const doc = draft === null ? baselineDoc : blocksToDoc(blocks);
   return {
     state: "ready", blocks, baselineDoc, doc, loadedVersionId: detail.version.id,
+    baselineRaw: detail.version.content, persistedRaw: draft?.content ?? null, capturing: false,
     activeVersionId: detail.active_version_id, sync, phase: null, write: null, outcome: null,
     headRevision: draft?.revision ?? 0, persistedDoc: draft === null ? null : doc,
     autosaveInFlight: false, stopped: false, reloadFailed: false, editorKey: 0,
@@ -90,6 +109,39 @@ function fromRead(detail: ChapterDetail, { draft, sync }: DraftDetail): Ready {
 export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLockChange, onWritten, onEditorReady }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ state: "loading" });
   const current = useRef(snapshot);
+  const [captureUI, setCaptureUI] = useState<CaptureUI>(initialCapture);
+  const captureCurrent = useRef(captureUI);
+  const captureAttempt = useRef<CaptureAttempt | null>(null);
+  const captureRoot = useRef<HTMLElement | null>(null);
+  const snapshotButton = useRef<HTMLButtonElement>(null);
+  const snapshotForm = useRef<HTMLFormElement>(null);
+  const snapshotName = useRef<HTMLInputElement>(null);
+  const snapshotCheck = useRef<HTMLButtonElement>(null);
+  const snapshotReturn = useRef<HTMLButtonElement>(null);
+  const reloadButton = useRef<HTMLButtonElement>(null);
+  const inputId = useId();
+  const focusRequest = useRef<{ previous: Element | null; target: "input" | "snapshot" | "check" | "reload" } | null>(null);
+  function changeCapture(next: CaptureUI) {
+    captureCurrent.current = next;
+    setCaptureUI(next);
+  }
+  function formFocus(target: "snapshot" | "check" | "reload") {
+    const previous = document.activeElement;
+    if (snapshotForm.current?.contains(previous) || previous === snapshotCheck.current || previous === snapshotReturn.current ||
+      (target === "reload" && previous === snapshotButton.current)) {
+      focusRequest.current = { previous, target };
+    }
+  }
+  useLayoutEffect(() => {
+    const move = focusRequest.current;
+    focusRequest.current = null;
+    if (!move || !mounted.current) return;
+    if (document.activeElement !== move.previous && document.activeElement !== document.body) return;
+    const target = move.target === "input" ? snapshotName.current : move.target === "check" ? snapshotCheck.current :
+      move.target === "reload" ? reloadButton.current : snapshotButton.current ?? reloadButton.current;
+    target?.focus();
+  });
+
   // Keep autosave's existing scheduling independent of sync-only changes.
   const ordinarySnapshot = useRef(snapshot);
   const autosaveBasis = ordinarySnapshot.current;
@@ -137,6 +189,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const read = useCallback(async () => {
     const end = beginOrdinary();
     const number = ++generation.current;
+    captureCurrent.current = initialCapture;
+    setCaptureUI(initialCapture);
     update({ state: "loading" });
     try {
       const detail = await getChapter(chapterId);
@@ -163,6 +217,9 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
       ordinary.current = { generation: 0, active: 0 };
       syncInFlight.current = null;
       pendingAutosave.current = null;
+      captureAttempt.current = null;
+      captureCurrent.current = initialCapture;
+      focusRequest.current = null;
       editor.current = null;
       refocus.current = false;
       focusOnReady.current = true;
@@ -222,10 +279,10 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         }
         const settled = { ...s, autosaveInFlight: false, sync: syncReply ? syncReply.sync : s.sync };
         if (revision !== null) {
-          const saved = { ...settled, headRevision: revision, persistedDoc: docSent, failedAt: null };
+          const saved = { ...settled, headRevision: revision, persistedDoc: docSent, persistedRaw: content, failedAt: null };
           update(due(saved) ? { ...saved, dirtySince: now } : saved);
         } else if (stopped) {
-          update({ ...settled, stopped: true, persistedDoc: null });
+          update({ ...settled, stopped: true, persistedDoc: null, persistedRaw: null });
         } else {
           update({ ...settled, failedAt: now });
         }
@@ -255,9 +312,9 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   function settle(number: number, write: Write, loadedVersionId: string, activeVersionId: string | null, sync?: ChapterSync) {
     if (!mounted.current || number !== generation.current || current.current.state !== "ready") return;
     update({
-      ...current.current, loadedVersionId, activeVersionId, sync, baselineDoc: write.doc, phase: null,
+      ...current.current, loadedVersionId, activeVersionId, sync, baselineDoc: write.doc, baselineRaw: write.content, phase: null,
       write: null, outcome: write.kind === "save" ? "saved" : "sent",
-      headRevision: 0, persistedDoc: null, stopped: false, reloadFailed: false, failedAt: null, lastPutStartAt: null,
+      headRevision: 0, persistedDoc: null, persistedRaw: null, stopped: false, reloadFailed: false, failedAt: null, lastPutStartAt: null,
     });
     finishBusy();
     if (mounted.current && number === generation.current) callbacks.current.onWritten();
@@ -289,6 +346,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     const s = current.current;
     if (!mounted.current || s.state !== "ready") return;
     if (!(keepMine ? keepMineActive(s) : active(s, kind))) return;
+    changeCapture(initialCapture);
     const write: Write = { kind, doc: s.doc, content: serializeBlocks(docToBlocks(s.doc)), parent: s.loadedVersionId };
     const number = generation.current;
     const end = beginOrdinary();
@@ -313,7 +371,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
 
   function checkAgain() {
     const s = current.current;
-    if (s.state !== "ready" || s.phase !== "check-failed" || s.write === null) return;
+    if (s.state !== "ready" || s.capturing || s.phase !== "check-failed" || s.write === null) return;
+    changeCapture(initialCapture);
     const number = generation.current;
     const end = beginOrdinary();
     beginBusy(s, "checking", s.write);
@@ -328,6 +387,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     } else if (!s.stopped || busy(s)) {
       return;
     }
+    if (captureCurrent.current.form && captureCurrent.current.phase === "idle") changeCapture({ ...captureCurrent.current, form:false, name:"", invalid:false, failure:"" });
     const end = beginOrdinary();
     const number = ++generation.current;
     beginBusy({ ...s, reloadFailed: false }, "reloading", s.write, !inPlace);
@@ -339,6 +399,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
       const next = fromRead(detail, head);
       refocus.current = false;
       focusOnReady.current = !inPlace;
+      const ui = captureCurrent.current;
+      changeCapture({ ...initialCapture, status:ui.status, failure:ui.failure === copy["draft.snapshot.unconfirmed"] ? ui.failure : "" });
       update({ ...next, editorKey: number });
     } catch {
       if (!isCurrent(number)) return;
@@ -388,6 +450,151 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     void refresh();
   }, [chapterId, snapshot, syncRefreshToken, syncWake]);
 
+  // A stopped ordinary autosave dismisses an idle capture form.
+  useLayoutEffect(() => {
+    if (snapshot.state === "ready" && snapshot.stopped && captureCurrent.current.form && captureCurrent.current.phase === "idle") {
+      formFocus("reload");
+      changeCapture({ ...captureCurrent.current, form:false, name:"", invalid:false, failure:"" });
+    }
+  }, [snapshot]);
+
+  function openSnapshot() {
+    if (!captureEligible(current.current) || captureCurrent.current.form) return;
+    const previous = document.activeElement;
+    focusRequest.current = { previous, target:"input" };
+    changeCapture({ ...initialCapture, form:true, status:captureCurrent.current.status });
+  }
+  function closeSnapshot() {
+    if (!captureCurrent.current.form || captureCurrent.current.phase !== "idle") return;
+    formFocus("snapshot");
+    changeCapture({ ...initialCapture, status:captureCurrent.current.status });
+  }
+  function editName(name: string) {
+    const ui=captureCurrent.current;
+    if (ui.phase !== "idle") return;
+    changeCapture({ ...ui, name, invalid:false, failure:ui.invalid ? "" : ui.failure });
+  }
+  function liveCapture(a: CaptureAttempt) {
+    return captureAttempt.current === a && isCurrent(a.number) && current.current.state === "ready";
+  }
+  function releaseCapture(a: CaptureAttempt, next: Ready, ui: CaptureUI) {
+    if (!liveCapture(a)) return;
+    captureAttempt.current = null;
+    changeCapture(ui);
+    update({ ...next, capturing:false });
+    editor.current?.setProps({ editable: () => true });
+    a.end();
+  }
+  function captureFailure(a: CaptureAttempt, failure: string, invalid = false, conflict = false) {
+    if (!liveCapture(a) || current.current.state !== "ready") return;
+    const s=current.current;
+    if (conflict) formFocus("reload");
+    const ui=captureCurrent.current;
+    releaseCapture(a, conflict ? { ...s, stopped:true } : s,
+      { ...ui, form:conflict ? false : ui.form, phase:"idle", status:"", failure, invalid, conflict });
+  }
+  function confirmCapture(a: CaptureAttempt, result: CaptureResult) {
+    if (!liveCapture(a) || current.current.state !== "ready" || !a.body) return;
+    const s=current.current;
+    formFocus(result.draft_current ? "snapshot" : "reload");
+    let next: Ready = s;
+    if (result.draft_current) {
+      next = { ...s, activeVersionId:result.active_version_id, sync:result.sync };
+      if (result.created_version) next = { ...next, loadedVersionId:result.version.id, baselineDoc:a.doc, baselineRaw:a.body.content,
+        headRevision:0, persistedDoc:null, persistedRaw:null, failedAt:null, lastPutStartAt:null, outcome:null };
+    } else next = { ...s, stopped:true };
+    releaseCapture(a,next,{ ...initialCapture, status:copy["draft.snapshot.saved"], failure:result.draft_current ? "" : copy["draft.snapshot.conflict"], conflict:!result.draft_current });
+    if (isCurrent(a.number)) callbacks.current.onWritten();
+  }
+  async function lookupCapture(a: CaptureAttempt, manual = false) {
+    if (!liveCapture(a) || !a.body) return;
+    changeCapture({ ...captureCurrent.current, phase:manual ? "manual" : "checking", status:copy["draft.snapshot.checking"], failure:"" });
+    let result: CaptureResult | null = null;
+    try { result=await getSnapshotCapture(chapterId,a.body.request_id); } catch { /* absence and errors are unconfirmed */ }
+    if (!liveCapture(a)) return;
+    if (result) { confirmCapture(a,result); return; }
+    const previous=document.activeElement;
+    // Only controls that disappear hand focus to Check again. The name survives.
+    if (snapshotForm.current?.contains(previous) && previous !== snapshotName.current)
+      focusRequest.current={ previous,target:"check" };
+    changeCapture({ ...captureCurrent.current, phase:"unknown", status:"", failure:copy["draft.snapshot.unconfirmed"] });
+  }
+  function checkSnapshotAgain() {
+    const a=captureAttempt.current;
+    if (!a || captureCurrent.current.phase !== "unknown") return;
+    void lookupCapture(a,true);
+  }
+  function returnToDraft() {
+    const a=captureAttempt.current;
+    if (!a || !liveCapture(a) || captureCurrent.current.phase !== "unknown" || current.current.state !== "ready") return;
+    formFocus("reload");
+    releaseCapture(a,{ ...current.current, stopped:true },{ ...initialCapture, failure:copy["draft.snapshot.unconfirmed"] });
+  }
+  async function startSnapshot(fromForm = false) {
+    const s=current.current, ui=captureCurrent.current;
+    if (!mounted.current || !captureEligible(s) || ui.phase !== "idle" || fromForm !== ui.form) return;
+    const a: CaptureAttempt = { number:generation.current, doc:s.doc, name:fromForm && ui.name !== "" ? ui.name : undefined, body:null, end:beginOrdinary() };
+    captureAttempt.current=a;
+    changeCapture({ ...ui, phase:"taking", status:copy["draft.snapshot.taking"], failure:"", invalid:false, conflict:false });
+    editor.current?.setProps({ editable:() => false });
+    update({ ...s, capturing:true, outcome:null });
+    const pending=pendingAutosave.current;
+    if (pending) {
+      await pending;
+      if (!liveCapture(a) || current.current.state !== "ready") return;
+      const latest=current.current;
+      if (latest.stopped) {
+        formFocus("reload");
+        releaseCapture(a,latest,{ ...initialCapture });
+        return;
+      }
+      if (latest.failedAt !== null || latest.persistedDoc === null || latest.headRevision === 0) {
+        captureFailure(a,copy["draft.snapshot.finishDraft"]); return;
+      }
+    }
+    if (!liveCapture(a) || current.current.state !== "ready") return;
+    const confirmed=current.current;
+    let requestId: string;
+    try { requestId=globalThis.crypto.randomUUID(); }
+    catch { captureFailure(a,copy["draft.snapshot.startFailed"]); return; }
+    const content=confirmed.persistedDoc && a.doc.eq(confirmed.persistedDoc) && confirmed.persistedRaw !== null ? confirmed.persistedRaw :
+      a.doc.eq(confirmed.baselineDoc) ? confirmed.baselineRaw : serializeBlocks(docToBlocks(a.doc));
+    a.body={ request_id:requestId, content, base_version:confirmed.loadedVersionId, base_revision:confirmed.headRevision, ...(a.name === undefined ? {} : { name:a.name }) };
+    let result: CaptureResult | null;
+    try { result=await captureSnapshot(chapterId,a.body); }
+    catch(error) {
+      if (!liveCapture(a)) return;
+      if (error instanceof ApiError) {
+        const details=detailsObject(error.details);
+        const reason=details?.reason;
+        if (error.status === 400 && error.code === "validation_failed" && hasDetail(error,"/name")) {
+          captureFailure(a,copy["draft.snapshot.invalid"],fromForm); return;
+        }
+        if (error.status === 400 && error.code === "validation_failed" && hasDetail(error,"/content","nothing to capture")) {
+          captureFailure(a,copy["draft.snapshot.empty"]); return;
+        }
+        if (error.status === 409 && error.code === "conflict" && (reason === "version" || reason === "revision") && typeof details?.current_version === "string" && /^ver_[0-9a-f]{12}$/.test(details.current_version) && typeof details.current_revision === "number" && Number.isInteger(details.current_revision) && details.current_revision >= 0) {
+          captureFailure(a,copy["draft.snapshot.conflict"],false,true); return;
+        }
+        if (error.status === 409 && error.code === "snapshot_conflict") {
+          const failure=reason === "name_exists" ? copy["draft.snapshot.nameExists"] :
+            reason === "released_book" ? copy["draft.snapshot.released"] : reason === "scene_hints" ? copy["draft.snapshot.hints"] :
+            reason === "request_mismatch" ? copy["draft.snapshot.failed"] : null;
+          if (failure) { captureFailure(a,failure); return; }
+        }
+        if ((error.status === 400 && error.code === "validation_failed") || (error.status === 401 && error.code === "auth_required") ||
+          (error.status === 404 && error.code === "not_found") || (error.status === 413 && error.code === "payload_too_large") ||
+          (error.status === 415 && error.code === "unsupported_media_type")) {
+          captureFailure(a,copy["draft.snapshot.failed"]); return;
+        }
+      }
+      await lookupCapture(a); return;
+    }
+    if (!liveCapture(a)) return;
+    if (result) confirmCapture(a,result);
+    else await lookupCapture(a);
+  }
+
   function docChange(doc: Node) {
     const s = current.current;
     if (s.state !== "ready" || busy(s)) return;
@@ -406,21 +613,21 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const isLocked = locked(snapshot);
   const isBusy = isReady && busy(snapshot);
 
-  const actions = useRef({ start });
-  actions.current = { start };
+  const actions = useRef({ start, startSnapshot });
+  actions.current = { start, startSnapshot };
   useEffect(() => {
-    if (!isReady) return;
     function chord(event: KeyboardEvent) {
       if (event.ctrlKey === event.metaKey || event.altKey) return;
       if (event.code === "KeyS" && !event.shiftKey) {
-        event.preventDefault(); void actions.current.start("save");
+        event.preventDefault();
+        if (!event.repeat && !event.isComposing) void actions.current.startSnapshot();
       } else if (event.code === "Enter" && event.shiftKey) {
         event.preventDefault(); void actions.current.start("send");
       }
     }
     window.addEventListener("keydown", chord);
     return () => window.removeEventListener("keydown", chord);
-  }, [isReady]);
+  }, []);
 
   useEffect(() => {
     if (!isLocked) return;
@@ -433,6 +640,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     <section className="ax-draft" data-surface="draft" data-state="loading" data-autosave="idle">
       <p className="ax-status" role="status" data-part="reading">{copy["draft.opening"]}</p>
       <span className="ax-reading-rule" aria-hidden="true" />
+      <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status" />
     </section>
   );
   if (snapshot.state === "failed") return (
@@ -442,10 +650,16 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         <button type="button" className="ax-button ax-button--secondary" data-part="try-again"
           onClick={() => { if (current.current.state === "failed") void read(); }}>{copy["draft.tryAgain"]}</button>
       </div>
+      <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status" />
     </section>
   );
 
   const s = snapshot;
+  const ui=captureUI;
+  const snapshotActive=captureEligible(s) && !ui.form;
+  const pendingCapture=ui.phase !== "idle";
+  const checkingManually=ui.phase === "manual";
+  const recovery=ui.phase === "unknown" || checkingManually;
   const state = s.phase ?? (s.stopped ? "conflict" : dirty(s) ? "unsaved" : "clean");
   const showConflict = s.stopped && (!isBusy || s.phase === "reloading");
   const autosave = autosaveStatus(s);
@@ -454,28 +668,45 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const chip = syncChip({ version_id: s.loadedVersionId, active_version_id: s.activeVersionId, sync: s.sync });
   const failure = s.phase === "write-failed" || s.phase === "check-failed";
   const outcome = state === "clean" ? s.outcome : null;
-  const status = state === "unsaved" && isLocked ? copy["draft.unsaved"] : state === "saving" ? copy["draft.saving"]
+  const status = state === "unsaved" && (dirty(s) && !kept(s)) ? copy["draft.unsaved"] : state === "saving" ? copy["draft.saving"]
     : state === "sending" ? copy["draft.sending"] : state === "checking" ? copy["draft.checking"]
     : state === "reloading" && s.stopped ? copy["draft.reloading"] : outcome === "saved" ? copy["draft.saved"] : outcome === "sent" ? copy["draft.sent"] : "";
   return (
-    <section className="ax-draft" data-surface="draft" data-state={state} data-autosave={autosave}>
+    <section ref={captureRoot} className="ax-draft" data-surface="draft" data-state={state} data-autosave={autosave}>
       <div className="ax-draft-head" data-part="draft-head">
-        <div className="ax-toolbar" data-part="toolbar" role="group">
+        <div className="ax-toolbar ax-draft__snapshot-toolbar" data-part="toolbar" role="group">
           {chip !== null && <span className="ax-binder__sync" data-part="version-chip">{chip}</span>}
           <span className="ax-autosave" data-part="autosave" role="status">
             {autosave !== "idle" && autosave !== "saved" &&
               <span className="ax-autosave__dot" data-part="autosave-dot" aria-hidden="true" />}
             {autosave === "failed" ? copy["draft.autosaveFailed"] : null}
           </span>
+          {s.phase === null && !s.stopped && <button ref={snapshotButton} className="ax-button ax-button--quiet ax-draft__snapshot" type="button" data-part="snapshot" aria-disabled={!snapshotActive}
+            onClick={openSnapshot}><span>{copy["draft.snapshot.action"]}</span></button>}
           <button type="button" className="ax-button ax-button--secondary" data-part="save" aria-disabled={!saveActive}
             onClick={() => { void start("save"); }}>{copy["draft.save"]}</button>
           <button type="button" className={`ax-button ax-button--${sendActive ? "primary" : "secondary"}`} data-part="send"
             aria-disabled={!sendActive} onClick={() => { void start("send"); }}>{copy["draft.send"]}</button>
         </div>
+        {ui.form && <form ref={snapshotForm} className="ax-draft__snapshot-form" data-part="snapshot-form" onSubmit={event => { event.preventDefault(); void startSnapshot(true); }}
+          onKeyDown={event => { if (event.key === "Escape" && !pendingCapture) { event.preventDefault(); event.stopPropagation(); closeSnapshot(); } }}>
+          <div className="ax-field">
+          <label className="ax-field-label" htmlFor={inputId}>{copy["draft.snapshot.label"]}</label>
+          <input className="ax-input ax-draft__snapshot-input" ref={snapshotName} id={inputId} data-part="snapshot-name" dir="auto" value={ui.name} readOnly={pendingCapture}
+            aria-describedby={inputId+"-hint"+(ui.invalid ? " "+inputId+"-failure" : "")} aria-invalid={ui.invalid || undefined}
+            onChange={event=>editName(event.target.value)} />
+          <p className="ax-draft__snapshot-hint" id={inputId+"-hint"}>{copy["draft.snapshot.hint"]}</p>
+          {ui.invalid && <p className="ax-draft__snapshot-failure" id={inputId+"-failure"} role="alert" data-part="snapshot-failure"><span className="ax-draft__snapshot-error-mark" aria-hidden="true" /><span>{ui.failure}</span></p>}
+          </div>
+          {!recovery && <div className="ax-draft__snapshot-actions">
+            <button className="ax-button ax-button--secondary ax-draft__snapshot-button" type="submit" data-part="snapshot-submit" aria-disabled={pendingCapture}><span>{copy["draft.snapshot.submit"]}</span></button>
+            <button className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-cancel" aria-disabled={pendingCapture} onClick={closeSnapshot}><span>{copy["draft.snapshot.cancel"]}</span></button>
+          </div>}
+        </form>}
         <p className="ax-draft-status" role="status" data-part="status" data-outcome={outcome ?? undefined}>{status}</p>
         {showConflict && <div className="ax-banner" role="alert" data-part="conflict">
-          <p className="ax-banner__lead">{copy["draft.conflict"]}</p>
-          <button type="button" className="ax-button ax-button--secondary" data-part="reload-latest" aria-disabled={isBusy}
+          {!ui.conflict && <p className="ax-banner__lead">{copy["draft.conflict"]}</p>}
+          <button type="button" className="ax-button ax-button--secondary" ref={reloadButton} data-part="reload-latest" aria-disabled={isBusy}
             onClick={() => { void reloadLatest(); }}>{copy["draft.reloadLatest"]}</button>
           <button type="button" className="ax-button ax-button--secondary" data-part="keep-mine" aria-disabled={!keepMineActive(s)}
             onClick={() => { void start("save", true); }}>{copy["draft.keepMine"]}</button>
@@ -492,6 +723,14 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
           {s.phase === "check-failed" && <button type="button" className="ax-button ax-button--secondary" data-part="check-again"
             onClick={checkAgain}>{copy["draft.checkAgain"]}</button>}
         </div>}
+        <div className="ax-draft__snapshot-feedback">
+          <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status">{ui.status}</p>
+          {ui.failure && !ui.invalid && <p className="ax-draft__snapshot-failure" role="alert" data-part="snapshot-failure">{ui.failure}</p>}
+          {recovery && <div className="ax-draft__snapshot-actions">
+            <button ref={snapshotCheck} className="ax-button ax-button--secondary ax-draft__snapshot-button" type="button" data-part="snapshot-check-again" aria-disabled={checkingManually} onClick={checkSnapshotAgain}><span>{copy["draft.snapshot.checkAgain"]}</span></button>
+            <button ref={snapshotReturn} className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-return" aria-disabled={checkingManually} onClick={returnToDraft}><span>{copy["draft.snapshot.return"]}</span></button>
+          </div>}
+        </div>
       </div>
       <div className="ax-draft-page" data-part="page">
         <Editor key={s.editorKey} blocks={s.blocks} editable={!isBusy} onDocChange={docChange} onReady={(view) => {

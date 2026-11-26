@@ -11,7 +11,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-test("AC1 applies all twelve migrations and installs word count and version activation", async () => {
+test("AC1 applies all thirteen migrations and installs word count and version activation", async () => {
   const { rows } = await pool.query<{ filename: string }>(
     "SELECT filename FROM schema_migrations ORDER BY filename",
   );
@@ -19,7 +19,7 @@ test("AC1 applies all twelve migrations and installs word count and version acti
     "0001_containers.sql", "0002_ledger.sql", "0003_corpus.sql", "0004_commit_inputs.sql",
     "0005_intake_tables.sql", "0006_intake_functions.sql", "0007_commit_inputs_intake.sql",
     "0008_commit_inputs_activate.sql", "0009_word_count.sql", "0010_chapter_drafts.sql",
-    "0011_chapter_pullbacks.sql", "0012_named_cuts.sql",
+    "0011_chapter_pullbacks.sql", "0012_named_cuts.sql", "0013_snapshot_capture_requests.sql",
   ]);
   expect((await pool.query("SELECT axis_word_count('abc') AS count")).rows).toEqual([{ count: 1 }]);
   const { rows: [definition] } = await pool.query<{ body: string }>(

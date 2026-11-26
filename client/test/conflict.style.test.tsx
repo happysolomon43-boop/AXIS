@@ -14,7 +14,7 @@ test("AC1 renders an ink banner with secondary choices, a note, and the proper h
   });
   const head = ui.part("draft-head");
   const banner = ui.part("conflict");
-  const childParts = (element: Element) => Array.from(element.children, (child) => child.getAttribute("data-part"));
+  const childParts = (element: Element) => Array.from(element.children).filter(child=>!child.classList.contains("ax-draft__snapshot-feedback")).map(child=>child.getAttribute("data-part"));
   expect(childParts(head)).toEqual(["toolbar", "status", "conflict"]);
   expect(banner).toHaveClass("ax-banner");
   expect(banner).toHaveAttribute("role", "alert");

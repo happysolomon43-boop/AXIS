@@ -1,9 +1,10 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { undo, undoDepth } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { Draft } from "../src/draft/Draft";
-import type { ChapterSync } from "../src/api/types";
+import { capturePath,captureReply } from "./snapshotCaptureFixtures";
+import type { CaptureRequest, ChapterSync } from "../src/api/types";
 import { chapterA, chapterPath, detailText, reply } from "./d06.fixtures";
 import { advance, draftNone, draftPath, edit, fakeClock, putOk } from "./draftFixtures";
 import { deferred, mockApi } from "./helpers";
@@ -155,4 +156,16 @@ test("AXB-0085 AC4 errors and null consume only their own token", async () => {
   expect(bad.root).toHaveAttribute("data-state","clean");
   expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   bad.unmount();
+});
+
+test("D14 capture invalidates an older D12 projection and queues the latest notice",async()=>{
+ const first=deferred<ReturnType<typeof projected>>(), second=deferred<ReturnType<typeof projected>>();
+ const captured=deferred<ReturnType<typeof reply>>();
+ const ui=mount(syncInBook,(_,n)=>n===0?first.promise:second.promise,{extra:[{method:"POST",path:capturePath,reply:()=>captured.promise}]});
+ await ui.loaded();ui.token(1);expect(count(ui.calls)).toBe(1);
+ fireEvent.keyDown(window,{code:"KeyS",ctrlKey:true,cancelable:true});ui.token(2);
+ await act(async()=>first.resolve(projected(syncRevisedSame)));expect(ui.chip()).toBeNull();expect(count(ui.calls)).toBe(1);
+ const body=ui.calls.find(c=>c.path===capturePath)!.body as CaptureRequest;
+ await act(async()=>captured.resolve(captureReply(body,false,true)));expect(count(ui.calls)).toBe(2);
+ await act(async()=>second.resolve(projected(syncRevised)));expect(ui.chip()).toHaveTextContent(/^Being revised$/);expect(ui.onWritten).toHaveBeenCalledTimes(1);
 });
