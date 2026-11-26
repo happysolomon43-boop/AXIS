@@ -1,5 +1,5 @@
 import "./shell.css";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { SeriesTree } from "../api/types";
 import { Binder } from "../binder/Binder";
 import { copy } from "../copy";
@@ -17,6 +17,12 @@ export function Shell({ tree }: { tree: SeriesTree }) {
   const [refreshToken, setRefreshToken] = useState(0);
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
+  const [syncRefreshToken, setSyncRefreshToken] = useState(0);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const lockedRef = useRef(false);
   const openChapterIdRef = useRef<string | null>(null);
 
@@ -30,6 +36,11 @@ export function Shell({ tree }: { tree: SeriesTree }) {
     setOpenChapterId(id);
     onLockChange(false);
   }, [onLockChange]);
+  const onChapterPullBackLanded = useCallback((chapterId: string) => {
+    if (mounted.current && openChapterIdRef.current === chapterId) {
+      setSyncRefreshToken((token) => token + 1);
+    }
+  }, []);
   const onWritten = useCallback(() => {
     setRefreshToken((token) => token + 1);
     setHistoryRefreshToken((token) => token + 1);
@@ -105,10 +116,10 @@ export function Shell({ tree }: { tree: SeriesTree }) {
       </header>
       <aside className="ax-binder-region" data-region="binder" aria-label={copy["shell.binderRegion"]}
         id={binderId} ref={binder} hidden={!shown}>
-        <Binder tree={tree} openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} refreshToken={refreshToken} />
+        <Binder tree={tree} openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} onChapterPullBackLanded={onChapterPullBackLanded} refreshToken={refreshToken} />
       </aside>
       <main className="ax-text-region" data-region="text" aria-label={copy["shell.textRegion"]}>
-        {openChapterId !== null && <Draft key={openChapterId} chapterId={openChapterId} reloadToken={reloadToken} onLockChange={onLockChange} onWritten={onWritten} />}
+        {openChapterId !== null && <Draft key={openChapterId} chapterId={openChapterId} reloadToken={reloadToken} syncRefreshToken={syncRefreshToken} onLockChange={onLockChange} onWritten={onWritten} />}
       </main>
       {historyOpen && openChapterId !== null &&
         <Drawer title={copy["history.title"]} onClose={closeHistory}>

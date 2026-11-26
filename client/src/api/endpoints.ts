@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import type { ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export async function listSeries(): Promise<SeriesRow[]> {
   const result = await request<{ series: SeriesRow[] }>("GET", "/series");
@@ -39,6 +39,24 @@ export function sendChapter(chapterId: string, content: string, parentVersion: s
 
 export function getDraft(id: string): Promise<DraftDetail> {
   return request("GET", `/chapters/${encodeURIComponent(id)}/draft`);
+}
+
+function exactObject(value: unknown, keys: string[]): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    && Object.keys(value).length === keys.length
+    && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+export async function getDraftSync(chapterId: string): Promise<ChapterSync | null> {
+  const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(chapterId)}/draft?view=sync`);
+  if (!exactObject(result, ["sync"]) || !exactObject(result.sync, ["state", "same"])) return null;
+  const { state, same } = result.sync;
+  if (typeof same !== "boolean") return null;
+  if ((state === "draft_only" && !same) || (state === "in_book" && same)
+      || (state === "edited" && !same) || state === "being_revised") {
+    return { state, same };
+  }
+  return null;
 }
 
 export function putDraft(chapterId: string, content: string, baseVersion: string, baseRevision: number): Promise<DraftWritten> {

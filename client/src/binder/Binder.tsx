@@ -5,9 +5,9 @@ import { useEffect, useRef } from "react";
 import type { SeriesTree } from "../api/types";
 import { BookGroup, PullBackContext, usePullBackController } from "./BookGroup";
 
-export function Binder({ tree, openChapterId = null, locked = false, onOpenChapter, refreshToken = 0 }: {
+export function Binder({ tree, openChapterId = null, locked = false, onOpenChapter, onChapterPullBackLanded = () => {}, refreshToken = 0 }: {
   tree: SeriesTree; openChapterId?: string | null; locked?: boolean;
-  onOpenChapter?: (chapterId: string) => void; refreshToken?: number;
+  onOpenChapter?: (chapterId: string) => void; onChapterPullBackLanded?: (chapterId: string) => void; refreshToken?: number;
 }) {
   const refreshers = useRef(new Set<() => void>()).current;
   const pullBack = usePullBackController();
@@ -27,7 +27,7 @@ export function Binder({ tree, openChapterId = null, locked = false, onOpenChapt
         <PullBackContext.Provider value={pullBack}>
           {tree.books.map((book, index) => (
             <BookGroup key={book.id} book={book} initiallyExpanded={index === 0} refreshers={refreshers}
-              openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} refreshToken={refreshToken} />
+              openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} onChapterPullBackLanded={onChapterPullBackLanded} refreshToken={refreshToken} />
           ))}
         </PullBackContext.Provider>
       </ul>

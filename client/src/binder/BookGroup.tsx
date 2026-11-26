@@ -24,6 +24,7 @@ type Props = {
   openChapterId?: string | null;
   locked?: boolean;
   onOpenChapter?: (chapterId: string) => void;
+  onChapterPullBackLanded?: (chapterId: string) => void;
   refreshToken?: number;
 };
 
@@ -57,7 +58,7 @@ export function usePullBackController() {
 
 export const PullBackContext = createContext<ReturnType<typeof usePullBackController> | null>(null);
 
-export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId = null, locked = false, onOpenChapter, refreshToken = 0 }: Props) {
+export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId = null, locked = false, onOpenChapter, onChapterPullBackLanded = () => {}, refreshToken = 0 }: Props) {
   const localPullBack = usePullBackController();
   const pullBack = useContext(PullBackContext) ?? localPullBack;
   const [view, setView] = useState<GroupState>({
@@ -110,7 +111,7 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
       }
       return;
     }
-    if (mounted.current) settlePullBack?.(items);
+    settlePullBack?.(items);
     if (mounted.current && latestRead.current === number && (write || !current.current.adding)) {
       const focused = document.activeElement;
       if (focused?.matches('[data-part="chapter-pull-back"]') && chapterList.current?.contains(focused)) {
@@ -183,6 +184,9 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
   async function pullBackItem(item: ChapterListItem) {
     if (!current.current.expanded || actions.current.locked || !pullBack.begin(item.id)) return;
 
+    const chapterId = item.id;
+    const notify = () => onChapterPullBackLanded(chapterId);
+
     const openChapter = () => {
       const { locked, openChapterId, onOpenChapter } = actions.current;
       if (!mounted.current || !current.current.expanded || locked || openChapterId === item.id || !onOpenChapter) return;
@@ -197,12 +201,16 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
       } catch {
         failed = true;
       }
+      if (!failed) notify();
       if (!mounted.current || !current.current.expanded) return;
 
       if (failed) pullBack.setFailureBookId(book.id);
       const settled = read(false, undefined, (items) => {
         if (failed && items.some(({ id, sync }) => id === item.id && sync?.state === "being_revised")) {
+          notify();
+          if (!mounted.current) return;
           pullBack.setFailureBookId(null);
+          // Preserve the existing non-current navigation on confirmed settlement.
           openChapter();
         }
       });
