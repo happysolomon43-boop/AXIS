@@ -20,8 +20,13 @@ test("AC1 draws the dot and line only in the specified states, between the chip 
     expect(indicator).not.toHaveAttribute("tabindex");
     expect(indicator.textContent).toBe(text);
     expect(indicator.previousElementSibling).toBe(ui.part("version-chip"));
-    expect(indicator.nextElementSibling).toBe(ui.part("snapshot"));
-    expect(ui.part("snapshot").nextElementSibling).toBe(ui.part("save"));
+    if (state === "stopped") {
+      expect(ui.part("snapshot")).toBeNull();
+      expect(indicator.nextElementSibling).toBe(ui.part("save"));
+    } else {
+      expect(indicator.nextElementSibling).toBe(ui.part("snapshot"));
+      expect(ui.part("snapshot").nextElementSibling).toBe(ui.part("save"));
+    }
     expect(ui.part("save").nextElementSibling).toBe(ui.part("send"));
     expect(indicator.children).toHaveLength(dotDrawn ? 1 : 0);
     if (dotDrawn) {

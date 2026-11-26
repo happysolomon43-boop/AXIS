@@ -640,6 +640,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     <section className="ax-draft" data-surface="draft" data-state="loading" data-autosave="idle">
       <p className="ax-status" role="status" data-part="reading">{copy["draft.opening"]}</p>
       <span className="ax-reading-rule" aria-hidden="true" />
+      <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status" />
     </section>
   );
   if (snapshot.state === "failed") return (
@@ -649,6 +650,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         <button type="button" className="ax-button ax-button--secondary" data-part="try-again"
           onClick={() => { if (current.current.state === "failed") void read(); }}>{copy["draft.tryAgain"]}</button>
       </div>
+      <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status" />
     </section>
   );
 

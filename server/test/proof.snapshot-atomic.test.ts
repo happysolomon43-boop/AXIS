@@ -30,7 +30,7 @@ test("AXB-0103 AC2: staged version, ledger, label, and receipt commit atomically
   const broken=buildApp({pool:proxy});
   try{
    const res=await broken.inject({method:"POST",url:path,headers:alice,payload:body});
-   expect(staged).toBe(true);expect(failed).toBe(true);expect(res.statusCode,res.body).toBe(500);
+   expect(staged).toBe(true);expect(failed).toBe(true);expect(res.statusCode,res.body).toBe(500);expect(res.json()).toEqual({error:{code:"internal",message:"Internal error",details:null}});
   }finally{await broken.close();}
   expect(await state(pool)).toEqual(before);expect(await labels(pool)).toEqual(beforeLabels);
   expect((await pool.query("SELECT * FROM snapshot_capture_requests")).rows).toEqual(beforeReceipts);

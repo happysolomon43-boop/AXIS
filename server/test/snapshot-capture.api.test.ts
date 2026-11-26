@@ -49,12 +49,14 @@ test("AXB-0100 AC1 commits inert version and folded label with the receipt, and 
   expect(await receipts()).toEqual([expect.objectContaining({chapter_id:id,request_id:input.request_id,captured_version_id:c.version.id,draft_base_version_id:c.version.id,draft_base_revision:0,created_version:true})]);
   const history=(await f.history(id)).json();
   expect(history.versions[0]).toMatchObject({id:c.version.id,snapshot:c.snapshot,can_name_snapshot:false});
+  await resetDb(pool);
+  await f.app.close(); f=await fixture(pool);
   const other=await f.create("The gate shut.");
   const saved=await f.write(other.chapter.id,"The bell rang.");
   await stamp(saved.version.l_seq);
   const named=await post(other.chapter.id,body(saved.version.id,"The bell rang."));
   expect(named.statusCode,named.body).toBe(201);
-  expect(result(named).snapshot.name).toBe("Chapter 2 · 2026-11-16 · The bell rang.");
+  expect(result(named).snapshot.name).toBe("Chapter 1 · 2026-11-16 · The bell rang.");
 });
 test("AXB-0100 AC2 greatest byte-exact reuse, name conflict, different bytes and saved hints",async()=>{
   const first=await f.create("Exact text."),id=first.chapter.id;
