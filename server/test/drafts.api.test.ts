@@ -62,19 +62,19 @@ test("AC1 creates and updates the head without recording any version or input", 
   const before = await intakeCounts(pool);
   const first = await put(body());
   expect(first.statusCode, first.body).toBe(200);
-  expect(first.json()).toEqual({ chapter: { ...chapter, order_key: "0000001000" }, base_version: version.id, revision: 1 });
+  expect(first.json()).toEqual({ chapter: { ...chapter, order_key: "0000001000" }, base_version: version.id, revision: 1, sync: { state: "draft_only", same: false } });
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([
     { chapter_id: chapter.id, base_version: version.id, content: edited, revision: 1 },
   ]);
 
   const second = await put(body("", 1));
   expect(second.statusCode, second.body).toBe(200);
-  expect(second.json()).toEqual({ chapter, base_version: version.id, revision: 2 });
+  expect(second.json()).toEqual({ chapter, base_version: version.id, revision: 2, sync: { state: "draft_only", same: false } });
   expect((await pool.query("SELECT content FROM chapter_drafts")).rows).toEqual([{ content: "" }]);
 
   const limit = await put(body("😀".repeat(1000000), 2));
   expect(limit.statusCode, limit.body).toBe(200);
-  expect(limit.json()).toEqual({ chapter, base_version: version.id, revision: 3 });
+  expect(limit.json()).toEqual({ chapter, base_version: version.id, revision: 3, sync: { state: "draft_only", same: false } });
   expect((await pool.query("SELECT char_length(content) AS count FROM chapter_drafts")).rows).toEqual([{ count: 1000000 }]);
   expect(await intakeCounts(pool)).toEqual(before);
 });
@@ -147,7 +147,7 @@ test("AC3 checks version before revision and serializes two concurrent PUTs", as
   const replies = await Promise.all(contents.map((content) => put(body(content, 0, nextVersion))));
   expect(replies.map((reply) => reply.statusCode).sort()).toEqual([200, 409]);
   const winner = replies.findIndex((reply) => reply.statusCode === 200);
-  expect(replies[winner]!.json()).toEqual({ chapter, base_version: nextVersion, revision: 1 });
+  expect(replies[winner]!.json()).toEqual({ chapter, base_version: nextVersion, revision: 1, sync: { state: "draft_only", same: false } });
   expect(replies[1 - winner]!.json()).toEqual(conflict("revision", nextVersion, 1));
   expect((await pool.query("SELECT content FROM chapter_drafts")).rows).toEqual([{ content: contents[winner] }]);
 
@@ -160,7 +160,7 @@ test("AC3 checks version before revision and serializes two concurrent PUTs", as
 });
 
 test("AC4 reads head content and segmented blocks, then returns null after Save or Send", async () => {
-  const none = { chapter, draft: null };
+  const none = { chapter, draft: null, sync: { state: "draft_only", same: false } };
   const empty = await get();
   expect(empty.statusCode).toBe(200);
   expect(empty.json()).toEqual(none);
@@ -181,6 +181,7 @@ test("AC4 reads head content and segmented blocks, then returns null after Save 
     expect(read.statusCode).toBe(200);
     expect(read.json<DraftDetail>()).toEqual({
       chapter, draft: { base_version: version.id, revision: revision + 1, content, blocks },
+      sync: none.sync,
     });
     expect(await intakeCounts(pool)).toEqual(before);
     expect((await pool.query("SELECT revision, content FROM chapter_drafts")).rows)
@@ -190,7 +191,7 @@ test("AC4 reads head content and segmented blocks, then returns null after Save 
   expect((await get()).json()).toEqual(none);
   expect((await put(body(edited, 0, nextVersion))).statusCode).toBe(200);
   await write("send", nextVersion);
-  expect((await get()).json()).toEqual(none);
+  expect((await get()).json()).toEqual({ ...none, sync: { state: "in_book", same: true } });
 
   expect((await get(chapter.id, {})).statusCode).toBe(401);
   for (const [id, headers, message] of [

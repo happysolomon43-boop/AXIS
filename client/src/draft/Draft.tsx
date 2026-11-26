@@ -1,13 +1,14 @@
 import "./draft.css";
 import "./autosave.css";
 import "./conflict.css";
+import "../styles/binder-sync.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Node } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { getChapter, getDraft, putDraft, saveVersion, sendChapter } from "../api/endpoints";
 import { ApiError } from "../api/http";
-import type { ChapterDetail, DraftHead } from "../api/types";
-import { versionChip } from "../binder/format";
+import type { ChapterDetail, ChapterSync, DraftDetail } from "../api/types";
+import { syncChip } from "../binder/format";
 import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
 import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, type EditorBlock } from "../editor/model";
@@ -15,6 +16,7 @@ import { fireAt } from "./autosave";
 
 type Props = {
   chapterId: string;
+  reloadToken?: number;
   onLockChange: (locked: boolean) => void;
   onWritten: () => void;
   onEditorReady?: (view: EditorView) => void;
@@ -28,6 +30,7 @@ type Ready = {
   doc: Node;
   loadedVersionId: string;
   activeVersionId: string | null;
+  sync: ChapterSync | undefined;
   phase: Phase | null;
   write: Write | null;
   outcome: "saved" | "sent" | null;
@@ -65,7 +68,7 @@ function autosaveStatus(s: Ready) {
   return dirty(s) && kept(s) ? "saved" : "idle";
 }
 
-function fromRead(detail: ChapterDetail, draft: DraftHead | null): Ready {
+function fromRead(detail: ChapterDetail, { draft, sync }: DraftDetail): Ready {
   if (detail.version === null || (draft !== null && draft.base_version !== detail.version.id)) {
     throw new Error("Draft and chapter versions do not match");
   }
@@ -75,7 +78,7 @@ function fromRead(detail: ChapterDetail, draft: DraftHead | null): Ready {
   const doc = draft === null ? baselineDoc : blocksToDoc(blocks);
   return {
     state: "ready", blocks, baselineDoc, doc, loadedVersionId: detail.version.id,
-    activeVersionId: detail.active_version_id, phase: null, write: null, outcome: null,
+    activeVersionId: detail.active_version_id, sync, phase: null, write: null, outcome: null,
     headRevision: draft?.revision ?? 0, persistedDoc: draft === null ? null : doc,
     autosaveInFlight: false, stopped: false, reloadFailed: false, editorKey: 0,
     lastChangeAt: 0, dirtySince: 0,
@@ -83,7 +86,7 @@ function fromRead(detail: ChapterDetail, draft: DraftHead | null): Ready {
   };
 }
 
-export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Props) {
+export function Draft({ chapterId, reloadToken = 0, onLockChange, onWritten, onEditorReady }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ state: "loading" });
   const current = useRef(snapshot);
   const callbacks = useRef({ onLockChange, onWritten, onEditorReady });
@@ -92,6 +95,8 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
   const mounted = useRef(false);
   const editor = useRef<EditorView | null>(null);
   const refocus = useRef(false);
+  const focusOnReady = useRef(true);
+  const lastReloadToken = useRef(reloadToken);
   const pendingAutosave = useRef<Promise<void> | null>(null);
 
   const update = useCallback((next: Snapshot) => {
@@ -115,8 +120,8 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
         update({ state: "failed" });
         return;
       }
-      const { draft } = await getDraft(chapterId);
-      if (isCurrent(number)) update(fromRead(detail, draft));
+      const head = await getDraft(chapterId);
+      if (isCurrent(number)) update(fromRead(detail, head));
     } catch {
       if (isCurrent(number)) update({ state: "failed" });
     }
@@ -131,6 +136,7 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
       pendingAutosave.current = null;
       editor.current = null;
       refocus.current = false;
+      focusOnReady.current = true;
     };
   }, [read]);
 
@@ -152,14 +158,18 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
       async function saveDraft() {
         let revision: number | null = null;
         let stopped = false;
+        let syncReply: Pick<DraftDetail, "sync"> | undefined;
         try {
           const result = await putDraft(chapterId, content, baseVersion, baseRevision);
           revision = result.revision;
+          syncReply = result;
         } catch (error) {
           if (!isCurrent(number)) return;
           if (error instanceof ApiError && error.code === "conflict") {
             try {
-              const { draft } = await getDraft(chapterId);
+              const head = await getDraft(chapterId);
+              syncReply = head;
+              const { draft } = head;
               if (draft !== null && draft.content === content && draft.base_version === baseVersion) {
                 revision = draft.revision;
               }
@@ -174,12 +184,12 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
         if (!isCurrent(number) || s.state !== "ready") return;
         pendingAutosave.current = null;
         const now = Date.now();
-        const settled = { ...s, autosaveInFlight: false };
         // Check again may have found a landed write while this request was in flight.
         if (s.loadedVersionId !== baseVersion) {
-          update(settled);
+          update({ ...s, autosaveInFlight: false });
           return;
         }
+        const settled = { ...s, autosaveInFlight: false, sync: syncReply ? syncReply.sync : s.sync };
         if (revision !== null) {
           const saved = { ...settled, headRevision: revision, persistedDoc: docSent, failedAt: null };
           update(due(saved) ? { ...saved, dirtySince: now } : saved);
@@ -194,9 +204,9 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
     return () => window.clearTimeout(timer);
   }, [chapterId, isCurrent, snapshot, update]);
 
-  function beginBusy(s: Ready, phase: Phase, write: Write | null) {
+  function beginBusy(s: Ready, phase: Phase, write: Write | null, restoreFocus = true) {
     if (editor.current) {
-      refocus.current = editor.current.hasFocus();
+      refocus.current = restoreFocus && editor.current.hasFocus();
       editor.current.setProps({ editable: () => false });
     }
     update({ ...s, phase, write, outcome: null });
@@ -211,10 +221,10 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
     refocus.current = false;
   }
 
-  function settle(number: number, write: Write, loadedVersionId: string, activeVersionId: string | null) {
+  function settle(number: number, write: Write, loadedVersionId: string, activeVersionId: string | null, sync?: ChapterSync) {
     if (!mounted.current || number !== generation.current || current.current.state !== "ready") return;
     update({
-      ...current.current, loadedVersionId, activeVersionId, baselineDoc: write.doc, phase: null,
+      ...current.current, loadedVersionId, activeVersionId, sync, baselineDoc: write.doc, phase: null,
       write: null, outcome: write.kind === "save" ? "saved" : "sent",
       headRevision: 0, persistedDoc: null, stopped: false, reloadFailed: false, failedAt: null, lastPutStartAt: null,
     });
@@ -262,7 +272,7 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
       await check(number, write);
       return;
     }
-    settle(number, write, response.version.id, response.active_version_id);
+    settle(number, write, response.version.id, response.active_version_id, kind === "save" ? response.sync : undefined);
   }
 
   function checkAgain() {
@@ -273,25 +283,37 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
     void check(number, s.write);
   }
 
-  async function reloadLatest() {
+  async function reloadLatest(inPlace = false) {
     const s = current.current;
-    if (!mounted.current || s.state !== "ready" || !s.stopped || busy(s)) return;
+    if (!mounted.current || s.state !== "ready") return;
+    if (inPlace) {
+      if (s.stopped || locked(s) || s.autosaveInFlight) return;
+    } else if (!s.stopped || busy(s)) {
+      return;
+    }
     const number = ++generation.current;
-    beginBusy({ ...s, reloadFailed: false }, "reloading", s.write);
+    beginBusy({ ...s, reloadFailed: false }, "reloading", s.write, !inPlace);
     try {
       const detail = await getChapter(chapterId);
       if (!isCurrent(number)) return;
-      const { draft } = await getDraft(chapterId);
+      const head = await getDraft(chapterId);
       if (!isCurrent(number)) return;
-      const next = fromRead(detail, draft);
+      const next = fromRead(detail, head);
       refocus.current = false;
+      focusOnReady.current = !inPlace;
       update({ ...next, editorKey: number });
     } catch {
       if (!isCurrent(number)) return;
-      update({ ...s, reloadFailed: true });
+      update({ ...s, stopped: true, reloadFailed: true });
       finishBusy();
     }
   }
+
+  useEffect(() => {
+    if (lastReloadToken.current === reloadToken) return;
+    lastReloadToken.current = reloadToken;
+    void reloadLatest(true);
+  }, [reloadToken, reloadLatest]);
 
   function docChange(doc: Node) {
     const s = current.current;
@@ -356,17 +378,17 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
   const autosave = autosaveStatus(s);
   const saveActive = active(s, "save");
   const sendActive = active(s, "send");
-  const chip = versionChip({ version_id: s.loadedVersionId, active_version_id: s.activeVersionId });
+  const chip = syncChip({ version_id: s.loadedVersionId, active_version_id: s.activeVersionId, sync: s.sync });
   const failure = s.phase === "write-failed" || s.phase === "check-failed";
   const outcome = state === "clean" ? s.outcome : null;
   const status = state === "unsaved" && isLocked ? copy["draft.unsaved"] : state === "saving" ? copy["draft.saving"]
     : state === "sending" ? copy["draft.sending"] : state === "checking" ? copy["draft.checking"]
-    : state === "reloading" ? copy["draft.reloading"] : outcome === "saved" ? copy["draft.saved"] : outcome === "sent" ? copy["draft.sent"] : "";
+    : state === "reloading" && s.stopped ? copy["draft.reloading"] : outcome === "saved" ? copy["draft.saved"] : outcome === "sent" ? copy["draft.sent"] : "";
   return (
     <section className="ax-draft" data-surface="draft" data-state={state} data-autosave={autosave}>
       <div className="ax-draft-head" data-part="draft-head">
         <div className="ax-toolbar" data-part="toolbar" role="group">
-          {chip !== null && <span data-part="version-chip">{chip}</span>}
+          {chip !== null && <span className="ax-binder__sync" data-part="version-chip">{chip}</span>}
           <span className="ax-autosave" data-part="autosave" role="status">
             {autosave !== "idle" && autosave !== "saved" &&
               <span className="ax-autosave__dot" data-part="autosave-dot" aria-hidden="true" />}
@@ -401,7 +423,8 @@ export function Draft({ chapterId, onLockChange, onWritten, onEditorReady }: Pro
       <div className="ax-draft-page" data-part="page">
         <Editor key={s.editorKey} blocks={s.blocks} editable={!isBusy} onDocChange={docChange} onReady={(view) => {
           editor.current = view;
-          view.focus();
+          if (focusOnReady.current) view.focus();
+          focusOnReady.current = true;
           callbacks.current.onEditorReady?.(view);
         }} />
       </div>

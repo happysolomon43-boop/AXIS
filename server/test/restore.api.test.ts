@@ -136,7 +136,7 @@ test("AC2 checkpoints a different head and restores from the checkpoint parent i
   expect(checkpoint.blocks).toEqual([
     { ordinal: 1, kind: "heading", text: "Title" }, { ordinal: 2, kind: "paragraph", text: "Three!!" },
   ]);
-  expect(await read("/draft")).toEqual({ chapter: first.chapter, draft: null });
+  expect(await read("/draft")).toEqual({ chapter: first.chapter, draft: null, sync: { state: "edited", same: false } });
   expect(await ledgerAfter(third.version.l_seq)).toEqual([
     { l_seq: third.version.l_seq + 1, op: "chapter.checkpoint", door: "corpus", actor: "usr_alice" },
     { l_seq: third.version.l_seq + 2, op: "chapter.restore", door: "corpus", actor: "usr_alice" },
@@ -150,7 +150,7 @@ test("AC3 skips equal heads, restores newest and empty versions, and serializes 
   const fourth = await restore(first.version.id);
   expect(fourth.checkpoint_version_id).toBeNull();
   expect(fourth.version).toMatchObject({ version_no: 4, parent_version: third.version.id });
-  expect(await read("/draft")).toEqual({ chapter: first.chapter, draft: null });
+  expect(await read("/draft")).toEqual({ chapter: first.chapter, draft: null, sync: { state: "edited", same: false } });
   expect(await ledgerAfter(third.version.l_seq)).toHaveLength(1);
 
   const fifth = await restore(fourth.version.id);

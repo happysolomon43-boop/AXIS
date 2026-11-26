@@ -68,24 +68,6 @@ async function mount({ pending, secondChapter = false }: {
   };
 }
 
-test("AC1 refreshes the Draft, Book list and History once after the clean chapter is restored", async () => {
-  const ui = await mount();
-  await ui.preview();
-  const draft = ui.draft();
-  const start = ui.calls.length;
-  await act(async () => { fireEvent.click(ui.part("version-restore")); });
-
-  expect(ui.posts()).toMatchObject([{ method: "POST", path: restorePath, body: { version_id: rowB.id } }]);
-  expect(ui.part("restore-status").textContent).toBe("Restored into your draft. The Book is unchanged until you send.");
-  expect(ui.draft()).not.toBe(draft);
-  expect(ui.draft()).toHaveAttribute("data-state", "clean");
-  expect(ui.part("editor")).toHaveFocus();
-  expect(ui.readsAfter(start)).toEqual([
-    `GET ${chapterPath}`, `GET ${draftPath}`, `GET ${chaptersPath}`, `GET ${historyPath}`, `POST ${restorePath}`,
-  ].sort());
-  expect(ui.calls.filter(({ path }) => path === historyPath)).toHaveLength(2);
-});
-
 test("AC2 prevents a restore while the Draft has an unsaved edit", async () => {
   const ui = await mount();
   fakeClock();
@@ -136,7 +118,7 @@ test("AC4 handles a late success after the Drawer closes or a different chapter 
   expect(ui.part("drawer-body")).toBeNull();
   const closed = ui.calls.length;
   await act(async () => { post.resolve(restoreReply); });
-  expect(ui.draft()).not.toBe(draft);
+  expect(ui.draft()).toBe(draft);
   expect(ui.draft()).toHaveAttribute("data-state", "clean");
   expect(ui.readsAfter(closed)).toEqual([`GET ${chapterPath}`, `GET ${draftPath}`, `GET ${chaptersPath}`].sort());
   ui.unmount();

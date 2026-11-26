@@ -208,7 +208,7 @@ test("AC4 preserves a draft head, rolls back database errors and serialises with
 
   expect((await pullBack(id)).statusCode).toBe(200);
   expect(await head()).toEqual(beforeRows);
-  expect((await readDraft()).json()).toEqual(before.json());
+  expect((await readDraft()).json()).toEqual({ ...before.json(), sync: { state: "being_revised", same: false } });
 
   const [mark] = await Promise.all([pullBack(id), send(id, "abe", version.id)]);
   expect(mark.statusCode).toBe(200);

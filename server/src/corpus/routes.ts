@@ -3,10 +3,12 @@ import type { Pool } from "pg";
 import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
 import { AppError } from "../errors.js";
+import { readChapterSync } from "../sync/read.js";
+import type { ChapterSync } from "../sync/state.js";
 import {
   activateVersion, appendVersion, createChapterWithFirstVersion, findOwnedBook,
   findOwnedChapter, getChapterDetail, getChapterHistory, listBookChapters, sendChapter,
-  type BookChapters,
+  type BookChapters, type VersionWritten,
 } from "./repo.js";
 import { checkContent, checkHintsText, invalidParentVersion } from "./validate.js";
 
@@ -17,6 +19,7 @@ const bookChaptersPath = "/books/:id(^[\\s\\S]{1,100}$)/chapters";
 const chapterPath = "/chapters/:id(^[\\s\\S]{1,100}$)";
 type ChapterParams = { id: string };
 type ChapterVersionBody = { content: string; parent_version?: string; hints?: unknown[] | null };
+export type VersionSaved = VersionWritten & { sync: ChapterSync };
 
 const chapterWriteBody = {
   type: "object",
@@ -118,7 +121,9 @@ export function registerCorpusRoutes(app: FastifyInstance, { pool }: Deps): void
       checkVersionBody(request.body);
       const { source = "draft_edit", ...input } = request.body;
       const result = await appendVersion(pool, ownerId, chapter, { ...input, source });
-      return reply.code(201).send(result);
+      const sync = await readChapterSync(pool, chapter.id);
+      const saved: VersionSaved = { ...result, sync };
+      return reply.code(201).send(saved);
     },
   );
 

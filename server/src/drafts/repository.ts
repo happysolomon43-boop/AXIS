@@ -1,11 +1,13 @@
 import type { Pool, PoolClient } from "pg";
 import type { BlockRow, ChapterRef, ChapterRow } from "../corpus/repo.js";
 import { AppError } from "../errors.js";
+import { readChapterSync } from "../sync/read.js";
+import type { ChapterSync } from "../sync/state.js";
 
 type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
-export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null };
-export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number };
+export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync: ChapterSync };
+export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync: ChapterSync };
 export type DraftInput = { content: string; base_version: string; base_revision: number };
 
 const readOnly = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY";
@@ -74,7 +76,8 @@ export function putDraft(pool: Pool, chapter: ChapterRef, body: DraftInput): Pro
         [chapter.id, body.content],
       );
     if (!written) throw new Error("Draft write returned no row");
-    return { chapter: chapterRow, base_version: current.id, revision: written.revision };
+    const sync = await readChapterSync(client, chapter.id);
+    return { chapter: chapterRow, base_version: current.id, revision: written.revision, sync };
   });
 }
 
@@ -86,9 +89,10 @@ export function getDraft(pool: Pool, chapter: ChapterRef): Promise<DraftDetail> 
        FROM chapter_drafts WHERE chapter_id = $1`,
       [chapter.id],
     );
-    if (!head) return { chapter: chapterRow, draft: null };
+    const sync = await readChapterSync(client, chapter.id);
+    if (!head) return { chapter: chapterRow, draft: null, sync };
 
     const { blocks, ...draft } = head;
-    return { chapter: chapterRow, draft: { ...draft, blocks: blocks.map(({ ordinal, kind, text }) => ({ ordinal, kind, text })) } };
+    return { chapter: chapterRow, draft: { ...draft, blocks: blocks.map(({ ordinal, kind, text }) => ({ ordinal, kind, text })) }, sync };
   });
 }

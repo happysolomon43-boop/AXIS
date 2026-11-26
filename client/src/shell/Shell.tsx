@@ -16,7 +16,7 @@ export function Shell({ tree }: { tree: SeriesTree }) {
   const [locked, setLocked] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
-  const [draftEpoch, setDraftEpoch] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
   const lockedRef = useRef(false);
   const openChapterIdRef = useRef<string | null>(null);
 
@@ -58,8 +58,7 @@ export function Shell({ tree }: { tree: SeriesTree }) {
     setHistoryRefreshToken((token) => token + 1);
     if (lockedRef.current) return "kept";
 
-    setDraftEpoch((epoch) => epoch + 1);
-    onLockChange(false);
+    setReloadToken((token) => token + 1);
     return "applied";
   }
 
@@ -109,7 +108,7 @@ export function Shell({ tree }: { tree: SeriesTree }) {
         <Binder tree={tree} openChapterId={openChapterId} locked={locked} onOpenChapter={onOpenChapter} refreshToken={refreshToken} />
       </aside>
       <main className="ax-text-region" data-region="text" aria-label={copy["shell.textRegion"]}>
-        {openChapterId !== null && <Draft key={`${openChapterId}:${draftEpoch}`} chapterId={openChapterId} onLockChange={onLockChange} onWritten={onWritten} />}
+        {openChapterId !== null && <Draft key={openChapterId} chapterId={openChapterId} reloadToken={reloadToken} onLockChange={onLockChange} onWritten={onWritten} />}
       </main>
       {historyOpen && openChapterId !== null &&
         <Drawer title={copy["history.title"]} onClose={closeHistory}>

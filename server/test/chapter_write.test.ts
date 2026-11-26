@@ -115,6 +115,7 @@ test("AC1 saves versions with correct ancestry, optional hints, and unchanged ac
       text_hash: helloHash, hints_hash: emptyHash, l_seq: 2,
     },
     active_version_id: null,
+    sync: { state: "draft_only", same: false },
   });
   expect(await read(first.chapter.id)).toMatchObject({
     version: { id: result.version.id, version_no: 2 }, blocks: [{ text: "hello" }], active_version_id: null,
