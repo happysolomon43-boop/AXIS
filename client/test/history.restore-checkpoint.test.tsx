@@ -68,10 +68,14 @@ test("AXB-0117 AC1: refresh supplies the automatic snapshot and it can be restor
   expect(ui.rows()).toEqual([checkpoint]);
   expect(ui.part("version-source", checkpoint)).toHaveTextContent(/^Checkpoint$/);
   expect(within(checkpoint).getByText("Before restore")).toBeInTheDocument();
+  expect(within(checkpoint).getByText("automatic", { exact: true })).toBeInTheDocument();
+  expect(checkpoint.querySelector(".ax-history__snapshot-key")).toHaveTextContent(/^A$/);
 
   fireEvent.click(ui.part("snapshot-all")!);
   expect(ui.rows()).toHaveLength(historyAfterCheckpointNamed.versions.length);
-  expect(ui.row(checkpointRow.id)).toBeInTheDocument();
+  const allCheckpoint = ui.row(checkpointRow.id)!;
+  expect(within(allCheckpoint).getByText("automatic", { exact: true })).toBeInTheDocument();
+  expect(allCheckpoint.querySelector(".ax-history__snapshot-key")).toHaveTextContent(/^A$/);
   fireEvent.click(ui.part("snapshot-named")!);
   const expanded = await ui.open(checkpointRow.id);
   expect(ui.part("version-restore", expanded)).toHaveTextContent(/^Restore this version$/);
@@ -196,10 +200,13 @@ test("AXB-0117 AC4: each served checkpoint has a decorative A and other snapshot
   }
   for (const row of entries.slice(0, 2)) {
     expect(ui.part("version-source", row)).toHaveTextContent(/^Checkpoint$/);
+    expect(within(row).getByText("automatic", { exact: true })).toBeInTheDocument();
+    expect(within(row).queryByText("named by you", { exact: true })).toBeNull();
     expect(within(row).getByText("Before restore")).toBeInTheDocument();
   }
   expect(entries[0].textContent).not.toBe(entries[1].textContent);
   expect(within(entries[2]).getByText("Before the cut")).toBeInTheDocument();
+  expect(within(entries[2]).getByText("named by you", { exact: true })).toBeInTheDocument();
 
   for (const row of [newer, original]) {
     const entry = await ui.open(row.id);

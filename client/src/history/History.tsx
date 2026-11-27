@@ -111,6 +111,7 @@ function VersionEntry({ item, timeZone, inBook, selection, onOpen, onRetry, acti
   const button = useRef<HTMLButtonElement>(null);
   const date = formatVersionDate(item.at, timeZone);
   const source = sourceWord(item.source);
+  const isCheckpoint = item.source === "checkpoint";
   const words = wordsLabel(item.word_count);
   const mark = inBook ? copy["history.inBook"] : "";
   const label = [date, source, words, mark].filter(Boolean).join(", ");
@@ -128,8 +129,8 @@ function VersionEntry({ item, timeZone, inBook, selection, onOpen, onRetry, acti
         {selection !== null && <span className="ax-history__underline" data-part="version-underline" aria-hidden="true" />}
       </button>
       {savedSnapshot(item) && <div className="ax-history__snapshot-name" data-part="snapshot-name">
-        <span className="ax-history__snapshot-key" aria-hidden="true">{item.source === "checkpoint" ? "A" : "S"}</span>
-        <div><p className="ax-history__snapshot-source">{copy["history.snapshot.namedSource"]}</p>
+        <span className="ax-history__snapshot-key" aria-hidden="true">{isCheckpoint ? "A" : "S"}</span>
+        <div><p className="ax-history__snapshot-source">{copy[isCheckpoint ? "history.snapshot.automaticSource" : "history.snapshot.namedSource"]}</p>
           <bdi className="ax-history__snapshot-label">{savedSnapshot(item)!.name}</bdi></div>
       </div>}
       {namingAction}

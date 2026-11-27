@@ -138,6 +138,7 @@ export const copy = {
   "history.snapshot.released": "This chapter is released. A snapshot needs its locked version.",
   "history.snapshot.failed": "The snapshot could not be named.",
   "history.snapshot.namedSource": "named by you",
+  "history.snapshot.automaticSource": "automatic",
   "history.snapshotLifecycle.remove": "Remove snapshot name",
   "history.snapshotLifecycle.undo": "Undo",
   "history.snapshotLifecycle.check": "Check again",
