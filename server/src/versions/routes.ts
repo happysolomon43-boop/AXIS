@@ -3,7 +3,7 @@ import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
 import { findOwnedChapter } from "../corpus/repo.js";
 import { AppError } from "../errors.js";
-import { getVersionText } from "./repository.js";
+import { getVersionSource, getVersionText } from "./repository.js";
 import { uuidPattern } from "../named-cuts/capture.js";
 import { restoreVersion } from "./restore.js";
 
@@ -25,6 +25,24 @@ export function registerVersionRoutes(app: FastifyInstance, { pool }: Deps): voi
     if (!result) throw new AppError(404, "not_found", "Version not found");
     return result;
   });
+
+  app.get<{ Params: { id: string; versionId: string } }>(
+    "/chapters/:id/versions/:versionId/text",
+    {
+      onSend: async (_request, reply, payload) => {
+        reply.header("Cache-Control", "no-store");
+        return payload;
+      },
+    },
+    async (request) => {
+      const ownerId = requireUser(request);
+      const { id, versionId } = request.params;
+      if ([...id].length > 100 || [...versionId].length > 100) {
+        throw new AppError(404, "not_found", "Route not found");
+      }
+      return getVersionSource(pool, ownerId, id, versionId);
+    },
+  );
 
   app.post<{ Params: { id: string }; Body: { version_id: string; request_id: string } }>(
     restorePath,

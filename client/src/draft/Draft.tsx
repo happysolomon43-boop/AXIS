@@ -26,6 +26,8 @@ type Props = {
   onLockChange: (locked: boolean) => void;
   onWritten: () => void;
   onEditorReady?: (view: EditorView) => void;
+  onEditorDispose?: (view: EditorView) => void;
+  pageOwnsText?: () => boolean;
 };
 type Write = { kind: Exclude<WriteOperation, "restore">; doc: Node; request: WriteRequest; book: string };
 type Coordinates = Pick<WriteRequest, "base_version" | "base_revision">;
@@ -129,7 +131,7 @@ function fromRead(detail: WorkingState): Ready {
   };
 }
 
-export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefreshToken = 0, onLockChange, onWritten, onEditorReady, onDocumentChange }: Props) {
+export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefreshToken = 0, onLockChange, onWritten, onEditorReady, onEditorDispose, onDocumentChange, pageOwnsText }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ state: "loading" });
   const current = useRef(snapshot);
   const [captureUI, setCaptureUI] = useState<CaptureUI>(initialCapture);
@@ -164,7 +166,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
   useLayoutEffect(() => {
     const move = focusRequest.current;
     focusRequest.current = null;
-    if (!move || !mounted.current) return;
+    if (!move || !mounted.current || pageOwnsText?.()) return;
     if (document.activeElement !== move.previous && document.activeElement !== document.body) return;
     const target = move.target === "input" ? snapshotName.current : move.target === "check" ? snapshotCheck.current :
       move.target === "reload" ? reloadButton.current : move.target === "save" ? saveButton.current :
@@ -182,8 +184,8 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
   const handledSyncToken = useRef(syncRefreshToken);
   const syncInFlight = useRef<{ token: number; generation: number } | null>(null);
   const [syncWake, setSyncWake] = useState(0);
-  const callbacks = useRef({ onLockChange, onWritten, onEditorReady });
-  callbacks.current = { onLockChange, onWritten, onEditorReady };
+  const callbacks = useRef({ onLockChange, onWritten, onEditorReady, onEditorDispose, pageOwnsText });
+  callbacks.current = { onLockChange, onWritten, onEditorReady, onEditorDispose, pageOwnsText };
   const generation = useRef(0);
   const mounted = useRef(false);
   const editor = useRef<EditorView | null>(null);
@@ -342,7 +344,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     const view = editor.current;
     if (view) {
       view.setProps({ editable: () => true });
-      if (refocus.current && (document.activeElement === document.body || view.hasFocus())) view.focus();
+      if (!callbacks.current.pageOwnsText?.() && refocus.current && (document.activeElement === document.body || view.hasFocus())) view.focus();
     }
     refocus.current = false;
   }
@@ -759,7 +761,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
   actions.current = { start, startSnapshot };
   useEffect(() => {
     function chord(event: KeyboardEvent) {
-      if (event.ctrlKey === event.metaKey || event.altKey) return;
+      if (callbacks.current.pageOwnsText?.() || event.ctrlKey === event.metaKey || event.altKey) return;
       if (event.code === "KeyS" && !event.shiftKey) {
         event.preventDefault();
         if (!event.repeat && !event.isComposing) void actions.current.startSnapshot();
@@ -899,9 +901,12 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
             ordinarySnapshot.current = next;
             setSnapshot(next);
           }
-          if (focusOnReady.current) view.focus();
+          if (focusOnReady.current && !callbacks.current.pageOwnsText?.()) view.focus();
           focusOnReady.current = true;
           callbacks.current.onEditorReady?.(view);
+        }} onDispose={(view) => {
+          if (editor.current === view) editor.current = null;
+          callbacks.current.onEditorDispose?.(view);
         }} />
       </div>
     </section>

@@ -83,6 +83,28 @@ export async function getVersion(chapter: string, id: string, book?: string): Pr
   return { chapter: result.chapter, version: result.version, blocks: result.blocks };
 }
 
+export type StoredText = { chapter_id: string; version_id: string; content: string };
+
+function validStoredContent(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 2_000_000 || /[\u0000\uD800-\uDFFF]/u.test(value)) return false;
+  if (value.length <= 1_000_000) return true;
+  let count = 0;
+  for (const _scalar of value) {
+    if (++count > 1_000_000) return false;
+  }
+  return true;
+}
+
+export async function getStoredText(chapterId: string, versionId: string): Promise<StoredText> {
+  const path = `/chapters/${encodeURIComponent(chapterId)}/versions/${encodeURIComponent(versionId)}/text`;
+  const result = await request<unknown>("GET", path, undefined, 200);
+  if (!exactObject(result, ["chapter_id", "version_id", "content"])
+    || result.chapter_id !== chapterId || result.version_id !== versionId || !validStoredContent(result.content)) {
+    throw new ApiError(200, "unreadable");
+  }
+  return { chapter_id: chapterId, version_id: versionId, content: result.content };
+}
+
 export type ExpectedWrite = {
   chapter: string; book: string; operation: WriteOperation; requestId: string; parent?: string; source?: string;
 };

@@ -1,0 +1,12 @@
+.ax-history__compare { min-inline-size: 22ch; }
+.ax-history__compare[aria-disabled="true"] {
+  color: color-mix(in srgb, var(--ax-color-text-primary) 40%, transparent);
+  /* The inherited opacity would also fade the focus ring. */
+  opacity: 1;
+  cursor: default;
+}
+.ax-history__compare-reason { margin: 0; }
+
+@media (pointer: coarse) {
+  .ax-history__compare { min-block-size: var(--ax-size-hit-touch); }
+}

@@ -16,9 +16,9 @@ const STYLESHEETS = [
   "../src/binder/binder.css","../src/binder/open.css","../src/binder/sync-layout.css",
   "../src/components/reason-tooltip.css",
   "../src/draft/autosave.css","../src/draft/conflict.css","../src/draft/draft.css",
-  "../src/editor/editor.css","../src/history/history.css","../src/history/restore.css","../src/history/snapshot-lifecycle.css","../src/history/snapshots.css",
+  "../src/editor/editor.css","../src/history/compare-action.css","../src/history/history.css","../src/history/restore.css","../src/history/snapshot-lifecycle.css","../src/history/snapshots.css",
   "../src/onboarding/onboarding.css","../src/shell/drawer.css","../src/shell/shell.css",
-  "../src/styles/base.css","../src/styles/binder-sync.css",
+  "../src/styles/base.css","../src/styles/binder-sync.css","../src/styles/compare.css",
   "../src/styles/binder-menu.css","../src/styles/binder-pullback-check.css","../src/styles/draft-snapshot.css","../src/styles/page.css","../src/styles/opening.css","../src/styles/tokens.css",
 ].sort();
 const unauthorizedEnvelope={status:401,body:{error:{code:"auth_required",message:"Missing or invalid X-Axis-User header",details:null}}};

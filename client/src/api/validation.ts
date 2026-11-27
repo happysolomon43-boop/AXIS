@@ -28,11 +28,17 @@ export function validChapter(value: unknown, expectedChapter: string, expectedBo
     && matches(value.order_key, /^[0-9]{10}$/, 10);
 }
 
-const sources = ["draft_edit", "send", "reupload", "restore", "import", "bulk_replace", "checkpoint"];
+const versionSources = ["draft_edit", "send", "reupload", "restore", "import", "bulk_replace", "checkpoint"] as const;
+const sources = new Set<string>(versionSources);
+export type VersionSource = typeof versionSources[number];
+
+export function validVersionSource(value: unknown): value is VersionSource {
+  return typeof value === "string" && sources.has(value);
+}
 export function validVersion(value: unknown, expectedChapter: string): value is VersionRow {
   return object(value) && versionId(value.id) && value.chapter_id === expectedChapter && chapterId(value.chapter_id)
-    && integer(value.version_no, 1) && integer(value.l_seq, 1) && typeof value.source === "string"
-    && sources.includes(value.source) && hash(value.text_hash) && hash(value.hints_hash)
+    && integer(value.version_no, 1) && integer(value.l_seq, 1) && validVersionSource(value.source)
+    && hash(value.text_hash) && hash(value.hints_hash)
     && (value.parent_version === null || (versionId(value.parent_version) && value.parent_version !== value.id));
 }
 
