@@ -28,6 +28,12 @@ export const copy = {
   "binder.chapterName": (position: number, title: string | null) =>
     title === null ? `Chapter ${position}` : `Chapter ${position}: ${title}`,
 
+  "opening.serviceInvalid": "The service address is invalid.",
+  "opening.status": "Opening your workspace…",
+  "opening.identity": "Your workspace identity could not be verified.",
+  "opening.notFound": "That series could not be opened.",
+  "opening.failed": "Your workspace could not be opened.",
+  "opening.retry": "Try again",
   "app.opening": "Opening your Book",
   "app.openFailed": "Your Book could not be opened.",
   "app.tryAgain": "Try again",

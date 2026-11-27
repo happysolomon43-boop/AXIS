@@ -30,8 +30,8 @@ test("AXB-0033 AC1 opens Onboarding and shows the first Book after its creation"
   ]);
   const { container } = render(<App />);
   const opening = screen.getByRole("status");
-  expect(opening).toHaveAttribute("data-surface", "opening");
-  expect(opening).toHaveClass("ax-status", "ax-opening");
+  expect(opening.parentElement).toHaveAttribute("data-surface", "opening");
+  expect(opening).toHaveClass("ax-opening__status");
 
   await act(async () => list.resolve(emptySeries));
   const form = screen.getByRole("form");
@@ -123,9 +123,9 @@ test("AXB-0033 AC3 restarts from the list after a failed open and stops on unmou
     ]);
     render(<App />);
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveAttribute("data-surface", "opening-failed");
-    expect(alert).toHaveClass("ax-opening");
-    const retry = alert.querySelector('[data-part="try-again"]')!;
+    expect(alert.parentElement).toHaveAttribute("data-surface", "opening-failed");
+    expect(alert.parentElement).toHaveClass("ax-opening");
+    const retry = alert.parentElement!.querySelector('[data-part="try-again"]')!;
     expect(retry).toHaveClass("ax-button", "ax-button--secondary");
     expect(localStorage.getItem(deviceKey)).toBeNull();
     const nextCall = calls.length;
@@ -320,15 +320,6 @@ const expectedCss = `
   min-inline-size: 0;
   overflow-y: auto;
   background-color: var(--ax-color-surface-shell);
-}
-.ax-opening {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--ax-space-5);
-  max-inline-size: var(--ax-size-onboarding);
-  margin-inline: auto;
-  padding: var(--ax-space-9) var(--ax-space-6) 0;
 }
 @media (max-width: 1023px) {
   .ax-binder-region {

@@ -65,15 +65,6 @@
   overflow-y: auto;
   background-color: var(--ax-color-surface-shell);
 }
-.ax-opening {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--ax-space-5);
-  max-inline-size: var(--ax-size-onboarding);
-  margin-inline: auto;
-  padding: var(--ax-space-9) var(--ax-space-6) 0;
-}
 @media (max-width: 1023px) {
   .ax-binder-region {
     position: fixed;

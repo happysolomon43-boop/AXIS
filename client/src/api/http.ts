@@ -1,4 +1,5 @@
 import { getUserId } from "../identity";
+import { readServiceOrigin, serviceTarget } from "./serviceOrigin";
 
 export class ApiError extends Error {
   constructor(
@@ -14,9 +15,10 @@ export class ApiError extends Error {
 
 type ErrorEnvelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 
-export async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+export async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown, expectedSuccessStatus?: number): Promise<T> {
   const headers = { "X-Axis-User": getUserId() };
-  const options: RequestInit = { method, headers };
+  const target = serviceTarget(readServiceOrigin(import.meta.env.VITE_AXIS_SERVICE_ORIGIN), path);
+  const options: RequestInit = { ...target.options, method, headers };
   if (method !== "GET" && body !== undefined) {
     options.headers = { ...headers, "Content-Type": "application/json" };
     options.body = JSON.stringify(body);
@@ -24,13 +26,14 @@ export async function request<T>(method: "GET" | "POST" | "PUT", path: string, b
 
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, options);
+    response = await fetch(target.url, options);
   } catch (error) {
     throw new ApiError(0, "network", error instanceof Error ? error.message : String(error));
   }
 
   const { status } = response;
   if (response.ok) {
+    if (expectedSuccessStatus !== undefined && status !== expectedSuccessStatus) throw new ApiError(status, "unreadable");
     try {
       return await response.json() as T;
     } catch {

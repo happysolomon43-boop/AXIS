@@ -9,6 +9,8 @@ import { identifyRequest, registerIdentity } from "./auth.js";
 import { registerCorpusRoutes } from "./corpus/routes.js";
 import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
+import { readClientOrigins } from "./http/clientOrigins.js";
+import { applyCors, registerCors } from "./http/cors.js";
 import { registerPullBackRoutes } from "./pullback/routes.js";
 import { registerSnapshotLabelRoutes } from "./named-cuts/label-routes.js";
 import { registerSnapshotCaptureRoutes } from "./named-cuts/capture-routes.js";
@@ -51,6 +53,7 @@ function routeNotFound(_request: FastifyRequest, reply: FastifyReply) {
 }
 
 export function buildApp(deps: Deps): FastifyInstance {
+  const origins = readClientOrigins(process.env.AXIS_ALLOWED_CLIENT_ORIGINS);
   const app = Fastify({
     bodyLimit: 1048576,
     exposeHeadRoutes: false,
@@ -68,6 +71,7 @@ export function buildApp(deps: Deps): FastifyInstance {
     },
     frameworkErrors(error, request, reply) {
       // Routing errors occur before the regular request hooks.
+      if (origins.size && applyCors(request, reply, origins)) return;
       try {
         identifyRequest(request);
       } catch (error) {
@@ -80,6 +84,7 @@ export function buildApp(deps: Deps): FastifyInstance {
 
   app.setErrorHandler(handleError);
   app.setNotFoundHandler(routeNotFound);
+  registerCors(app, origins);
   registerIdentity(app);
   app.addHook("onRequest", async (request, reply) => {
     if (request.is404) return routeNotFound(request, reply);

@@ -253,6 +253,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* The opening retry blends its colours, not its focus ring, and grows with text. */
+.ax-button.ax-opening__retry { block-size: auto; }
+.ax-button.ax-opening__retry[aria-disabled="true"] { opacity: 1; }
 `;
 
 function readDeclarations(css: string) {

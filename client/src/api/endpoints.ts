@@ -1,8 +1,8 @@
 import { request } from "./http";
 import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
-export async function listSeries(): Promise<SeriesRow[]> {
-  const result = await request<{ series: SeriesRow[] }>("GET", "/series");
+export async function listSeries(expectedSuccessStatus?: number): Promise<SeriesRow[]> {
+  const result = await request<{ series: SeriesRow[] }>("GET", "/series", undefined, expectedSuccessStatus);
   return result.series;
 }
 
@@ -10,8 +10,8 @@ export function createSeries(title: string): Promise<SeriesTree> {
   return request("POST", "/series", { title });
 }
 
-export function getSeries(id: string): Promise<SeriesTree> {
-  return request("GET", `/series/${encodeURIComponent(id)}`);
+export function getSeries(id: string, expectedSuccessStatus?: number): Promise<SeriesTree> {
+  return request("GET", `/series/${encodeURIComponent(id)}`, undefined, expectedSuccessStatus);
 }
 
 export async function listBookChapters(bookId: string): Promise<ChapterListItem[]> {
