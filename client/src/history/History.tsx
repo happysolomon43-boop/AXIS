@@ -2,19 +2,68 @@ import "./history.css";
 import "./restore.css";
 import "./snapshots.css";
 import "./snapshot-lifecycle.css";
-import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import "./compare-action.css";
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getHistory, getVersion, getWriteReceipt, isDefiniteWriteFailure, restoreVersion, nameSnapshot, validNamedSnapshot, changeSnapshotLabel, validSnapshotLifecycle } from "../api/endpoints";
 import type { ChapterHistory, HistoryItem, NamedSnapshot, VersionText, SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, WriteResult } from "../api/types";
 import { ApiError } from "../api/http";
+import { integer, object, validVersionSource, versionId } from "../api/validation";
 import { copy } from "../copy";
+import type { CompareChoice } from "./ComparePage";
+import { chooseComparePair } from "./comparePair";
 import { formatVersionDate, previewBlocks, sourceWord, wordsLabel } from "./historyFormat";
 
 export type RestoreOutcome = { version_id: string; checkpoint_version_id: string | null; draft_current: boolean };
 export type OnRestored = (outcome: RestoreOutcome) => "applied" | "kept";
 
 type Props = {
+  onCompare?: (chapterId: string, versions: readonly CompareChoice[], a: string, b: string | null) => boolean;
+  compareEditorAvailable?: boolean;
   chapterId: string; seriesId?: string; refreshToken?: number; timeZone?: string; locked?: boolean; onRestored?: OnRestored; onRestoreStart?: () => OnRestored; pendingRestores?: Map<string, RestoreAttempt>;
 };
+function validUtc(at: unknown): at is string {
+  if (typeof at !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(at)) return false;
+  const date = new Date(at);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 19) === at.slice(0, 19);
+}
+
+function freezeCompareCatalogue(chapterId: string, versions: readonly HistoryItem[]): readonly CompareChoice[] | null {
+  const ids = new Set<string>();
+  const numbers = new Set<number>();
+  const choices: CompareChoice[] = [];
+  for (const item of versions) {
+    if (!object(item)) return null;
+    const { id, chapter_id, version_no, source, at, l_seq } = item;
+    if (!versionId(id) || chapter_id !== chapterId || !integer(version_no, 1) || !integer(l_seq, 1)
+      || !validVersionSource(source) || !validUtc(at) || ids.has(id) || numbers.has(version_no)) return null;
+    ids.add(id);
+    numbers.add(version_no);
+    choices.push(Object.freeze({ id, chapter_id, version_no, source, at, l_seq }));
+  }
+  return Object.freeze(choices);
+}
+
+function CompareAction({ enabled, launch }: { enabled: boolean; launch: () => boolean }) {
+  const reason = useId();
+  const [refused, setRefused] = useState(false);
+  useLayoutEffect(() => { setRefused(false); }, [enabled]);
+
+  const unavailable = !enabled || refused;
+  return <>
+    <button type="button" data-part="compare" className="ax-button ax-button--quiet ax-history__compare"
+      aria-disabled={unavailable || undefined} aria-describedby={unavailable ? reason : undefined}
+      onClick={event => {
+        if (!enabled) return;
+        if (launch()) return;
+        setRefused(true);
+        event.currentTarget.focus();
+      }}>Compare</button>
+    {unavailable && <p id={reason} data-part="compare-reason" className="ax-history__note ax-history__compare-reason">
+      Comparison is unavailable right now.
+    </p>}
+  </>;
+}
+
 type List = { state: "loading" | "failed" } | { state: "ready"; history: ChapterHistory; refreshFailed: boolean };
 type Selection = { id: string; state: "loading" | "failed" } | { id: string; state: "ready"; text: VersionText };
 export type RestoreAttempt = { id: string; requestId: string; book: string; notify: OnRestored; disposition?: ReturnType<OnRestored> };
@@ -144,7 +193,7 @@ function VersionEntry({ item, timeZone, inBook, selection, onOpen, onRetry, acti
 export function History(props:Props) {
   return <MountedHistory key={props.chapterId} {...props}/>;
 }
-function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locked = false, onRestored = keepDraft, onRestoreStart, pendingRestores }: Props) {
+function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locked = false, onRestored = keepDraft, onRestoreStart, pendingRestores, onCompare, compareEditorAvailable = false }: Props) {
   const initialChapter = useRef(chapterId).current;
   const root = useRef<HTMLElement>(null);
   const [list, setList] = useState<List>({ state: "loading" });
@@ -339,7 +388,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     }
     if (!readGuard(read,generation)||labelPending()) return;
     acceptedRead.current=read;
-    if(!history||history.chapter?.id!==initialChapter||!Array.isArray(history.versions)){if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt)uncertain(labelRef.current.attempt);else setList(previous=>previous.state==="ready"?{...previous,refreshFailed:true}:{state:"failed"});return;}
+    if(!history||history.chapter?.id!==initialChapter||!Array.isArray(history.versions)||history.versions.some(item=>!object(item)||typeof item.id!=="string")){if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt)uncertain(labelRef.current.attempt);else setList(previous=>previous.state==="ready"?{...previous,refreshFailed:true}:{state:"failed"});return;}
     if(labelRef.current.phase==="unconfirmed"&&labelRef.current.attempt){adjudicate(labelRef.current.attempt,history);return;}
     setHistory(history);
     const undo=currentUndo(history,labelRef.current.undo);
@@ -544,7 +593,24 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   function labelButton(part:string,label:string,inert:boolean,onClick:()=>void) {
     return <button type="button" className="ax-button ax-button--quiet ax-history__snapshot-action ax-history__lifecycle-action" data-part={part} aria-disabled={inert||undefined} onClick={()=>{if(!inert)onClick();}}><span className="ax-history__snapshot-action-label">{label}</span></button>;
   }
-  const visible = list.state === "ready" ? list.history.versions.filter(item => filter === "all" || !!savedSnapshot(item)) : [];
+  const catalogueRows = list.state === "ready" ? list.history.versions : null;
+  const hasCompare = !!onCompare;
+  const compareChoices = useMemo(() => hasCompare && catalogueRows
+    ? freezeCompareCatalogue(initialChapter, catalogueRows) : null, [initialChapter, hasCompare, catalogueRows]);
+  const visible = catalogueRows?.map((item, index) => ({ item, index }))
+    .filter(({ item }) => filter === "all" || !!savedSnapshot(item)) ?? [];
+  const displayedVersions = new Set<string>();
+  const comparePair = selection?.state === "ready" && compareChoices
+    ? chooseComparePair(compareChoices.map(choice => choice.id), selection.id) : null;
+  const compareEnabled = compareEditorAvailable && !locked && !!comparePair
+    && restore === null && labelUI.phase === "idle" && !busyNaming;
+
+  function launchCompare(id: string) {
+    if (!live.current || operation.current !== null || labelBlocked() || namingRef.current?.phase === "pending"
+      || !compareChoices || !comparePair || comparePair.a !== id || !onCompare) return false;
+    return onCompare(initialChapter, compareChoices, comparePair.a, comparePair.b);
+  }
+
   const newest = list.state === "ready" ? list.history.versions[0] : undefined;
   const targetEligible = list.state === "ready" && naming && list.history.versions.some(row =>
     row.id === naming.id && row.l_seq === naming.cut && eligible(row));
@@ -625,21 +691,23 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
               {newest && eligible(newest) && nameAction(newest)}
             </div> : <p className="ax-history__empty" data-part="empty">{copy["history.empty"]}</p>
           : <ul className="ax-history__list" data-part="version-list">
-            {visible.map((item) => {
-              const index = list.history.versions.findIndex(row => row.id === item.id);
+            {visible.map(({ item, index }) => {
+              if (displayedVersions.has(item.id)) return null;
+              displayedVersions.add(item.id);
               const selected = selection?.id === item.id ? selection : null;
               const restoring = restore?.state === "restoring" && restore.attempt.id === item.id;
               return <VersionEntry key={item.id} item={item}
                 timeZone={timeZone} inBook={item.id === list.history.active_version_id}
                 selection={selected} namingAction={eligible(item) ? nameAction(item) : undefined} onOpen={toggleVersion} onRetry={(id) => { void readVersion(id); }}
-                actions={(index !== 0 || (savedSnapshot(item)&&usableMarker(item))) && selected?.state === "ready" &&
+                actions={(onCompare || index !== 0 || (savedSnapshot(item)&&usableMarker(item))) && selected?.state === "ready" &&
                   <div className="ax-history__actions" data-part="version-actions" data-state={restoring ? "restoring" : "idle"}>
-                    {index!==0&&<><button type="button" className="ax-button ax-button--quiet ax-history__restore" data-part="version-restore"
+                    {index!==0&&<button type="button" className="ax-button ax-button--quiet ax-history__restore" data-part="version-restore"
                       aria-disabled={locked || restore !== null || busyLabel || busyNaming ? true : undefined}
                       onClick={() => { void pressRestore(item); }}>
                       {copy[restoring ? "history.restoring" : "history.restore"]}
-                    </button>
-                    {locked && <p className="ax-history__note" data-part="restore-blocked" role="status">{copy["history.restoreBlocked"]}</p>}</>}
+                    </button>}
+                    {onCompare && <CompareAction enabled={compareEnabled} launch={() => launchCompare(item.id)} />}
+                    {index !== 0 && locked && <p className="ax-history__note" data-part="restore-blocked" role="status">{copy["history.restoreBlocked"]}</p>}
                     {savedSnapshot(item)&&usableMarker(item)&&labelButton("snapshot-remove",copy["history.snapshotLifecycle.remove"],lifecycleInert,()=>removeLabel(item))}
                   </div>} />;
             })}

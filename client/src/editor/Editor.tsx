@@ -17,14 +17,15 @@ type Props = {
   editable: boolean;
   onDocChange: (doc: Node) => void;
   onReady?: (view: EditorView) => void;
+  onDispose?: (view: EditorView) => void;
 };
 
-export function Editor({ blocks, editable, onDocChange, onReady }: Props) {
+export function Editor({ blocks, editable, onDocChange, onReady, onDispose }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const initial = useRef(blocks);
-  const callbacks = useRef({ onDocChange, onReady });
-  callbacks.current = { onDocChange, onReady };
+  const callbacks = useRef({ onDocChange, onReady, onDispose });
+  callbacks.current = { onDocChange, onReady, onDispose };
   const canEdit = useRef(editable);
   canEdit.current = editable;
 
@@ -50,7 +51,11 @@ export function Editor({ blocks, editable, onDocChange, onReady }: Props) {
     });
     viewRef.current = view;
     callbacks.current.onReady?.(view);
-    return () => { viewRef.current = null; view.destroy(); };
+    return () => {
+      viewRef.current = null;
+      view.destroy();
+      callbacks.current.onDispose?.(view);
+    };
   }, []);
 
   useLayoutEffect(() => {

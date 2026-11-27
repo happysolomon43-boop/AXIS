@@ -8,10 +8,16 @@ export function AxisMotif() {
   );
 }
 
-export function ChevronGlyph({ direction }: { direction: "right" | "down" }) {
+const chevrons = {
+  right: "M4.5 2.5L8 6L4.5 9.5",
+  down: "M2.5 4.5L6 8L9.5 4.5",
+  left: "M7.5 2.5L4 6L7.5 9.5",
+};
+
+export function ChevronGlyph({ direction, size = 12 }: { direction: keyof typeof chevrons; size?: number }) {
   return (
-    <svg className="ax-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-      <path d={direction === "right" ? "M4.5 2.5L8 6L4.5 9.5" : "M2.5 4.5L6 8L9.5 4.5"}
+    <svg className="ax-chevron" width={size} height={size} viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+      <path d={chevrons[direction]}
         fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter" />
     </svg>
   );
