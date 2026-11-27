@@ -7,6 +7,7 @@ export type ErrorCode =
   | "conflict"
   | "snapshot_conflict"
   | "not_in_book"
+  | "pull_back_conflict"
   | "internal";
 
 export class AppError extends Error {
