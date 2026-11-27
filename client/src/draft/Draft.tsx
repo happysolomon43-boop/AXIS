@@ -12,6 +12,7 @@ import type { CaptureRequest, CaptureResult, ChapterSync, WorkingState, WriteOpe
 import { syncChip } from "../binder/format";
 import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
+import { ReasonTooltip } from "../components/ReasonTooltip";
 import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, sameContentDoc, type EditorBlock } from "../editor/model";
 import { fireAt } from "./autosave";
 import { revision as validRevision, versionId } from "../api/validation";
@@ -135,6 +136,9 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
   const captureAttempt = useRef<CaptureAttempt | null>(null);
   const captureRoot = useRef<HTMLElement | null>(null);
   const snapshotButton = useRef<HTMLButtonElement>(null);
+  const snapshotSubmit = useRef<HTMLButtonElement>(null);
+  const snapshotCancel = useRef<HTMLButtonElement>(null);
+  const tooltipId = useId();
   const snapshotForm = useRef<HTMLFormElement>(null);
   const snapshotName = useRef<HTMLInputElement>(null);
   const snapshotCheck = useRef<HTMLButtonElement>(null);
@@ -797,6 +801,11 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
   const pendingCapture=ui.phase !== "idle";
   const checkingManually=ui.phase === "manual";
   const recovery=ui.phase === "unknown" || checkingManually;
+  const captureReason = ui.phase === "manual" || ui.phase === "checking" ? copy["draft.snapshotReason.checking"]
+    : ui.phase === "taking" ? copy["draft.snapshotReason.taking"]
+    : ui.phase === "unknown" ? copy["draft.snapshotReason.unconfirmed"] : "";
+  const launchReason = captureReason || (ui.form ? copy["draft.snapshotReason.formOpen"] : "");
+  const reasonId = (part: string, inactive: boolean) => inactive ? tooltipId + "-" + part : undefined;
   const state = s.phase ?? (s.stopped ? "conflict" : dirty(s) ? "unsaved" : "clean");
   const showConflict = s.stopped && (s.phase === null || s.phase === "reloading" || s.phase === "write-failed");
   const autosave = autosaveStatus(s);
@@ -819,7 +828,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
               <span className="ax-autosave__dot" data-part="autosave-dot" aria-hidden="true" />}
             {autosave === "failed" ? copy["draft.autosaveFailed"] : null}
           </span>
-          {s.phase === null && !s.stopped && <button ref={snapshotButton} className="ax-button ax-button--quiet ax-draft__snapshot" type="button" data-part="snapshot" aria-disabled={!snapshotActive}
+          {s.phase === null && !s.stopped && <button ref={snapshotButton} className="ax-button ax-button--quiet ax-draft__snapshot" type="button" data-part="snapshot" aria-disabled={!snapshotActive} aria-describedby={reasonId("launch", !snapshotActive)}
             onClick={openSnapshot}><span>{copy["draft.snapshot.action"]}</span></button>}
           <button type="button" ref={saveButton} className="ax-button ax-button--secondary" data-part="save" aria-disabled={!saveActive}
             onClick={() => { void start("save"); }}>{copy["draft.save"]}</button>
@@ -837,8 +846,8 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
           {ui.invalid && <p className="ax-draft__snapshot-failure" id={inputId+"-failure"} role="alert" data-part="snapshot-failure"><span className="ax-draft__snapshot-error-mark" aria-hidden="true" /><span>{ui.failure}</span></p>}
           </div>
           {!recovery && <div className="ax-draft__snapshot-actions">
-            <button className="ax-button ax-button--secondary ax-draft__snapshot-button" type="submit" data-part="snapshot-submit" aria-disabled={pendingCapture}><span>{copy["draft.snapshot.submit"]}</span></button>
-            <button className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-cancel" aria-disabled={pendingCapture} onClick={closeSnapshot}><span>{copy["draft.snapshot.cancel"]}</span></button>
+            <button className="ax-button ax-button--secondary ax-draft__snapshot-button" type="submit" ref={snapshotSubmit} data-part="snapshot-submit" aria-disabled={pendingCapture} aria-describedby={reasonId("submit", pendingCapture)}><span>{copy["draft.snapshot.submit"]}</span></button>
+            <button className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" ref={snapshotCancel} data-part="snapshot-cancel" aria-disabled={pendingCapture} aria-describedby={reasonId("cancel", pendingCapture)} onClick={closeSnapshot}><span>{copy["draft.snapshot.cancel"]}</span></button>
           </div>}
         </form>}
         <p className="ax-draft-status" role="status" data-part="status" data-outcome={outcome ?? undefined}>{status}</p>
@@ -865,11 +874,20 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
           <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status">{ui.status}</p>
           {ui.failure && !ui.invalid && <p className="ax-draft__snapshot-failure" role="alert" data-part="snapshot-failure">{ui.failure}</p>}
           {recovery && <div className="ax-draft__snapshot-actions">
-            <button ref={snapshotCheck} className="ax-button ax-button--secondary ax-draft__snapshot-button" type="button" data-part="snapshot-check-again" aria-disabled={checkingManually} onClick={checkSnapshotAgain}><span>{copy["draft.snapshot.checkAgain"]}</span></button>
-            <button ref={snapshotReturn} className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-return" aria-disabled={checkingManually} onClick={returnToDraft}><span>{copy["draft.snapshot.return"]}</span></button>
+            <button ref={snapshotCheck} className="ax-button ax-button--secondary ax-draft__snapshot-button" type="button" data-part="snapshot-check-again" aria-disabled={checkingManually} aria-describedby={reasonId("check", checkingManually)} onClick={checkSnapshotAgain}><span>{copy["draft.snapshot.checkAgain"]}</span></button>
+            <button ref={snapshotReturn} className="ax-button ax-button--quiet ax-draft__snapshot-button" type="button" data-part="snapshot-return" aria-disabled={checkingManually} aria-describedby={reasonId("return", checkingManually)} onClick={returnToDraft}><span>{copy["draft.snapshot.return"]}</span></button>
           </div>}
         </div>
       </div>
+      {s.phase === null && !s.stopped && !snapshotActive && <ReasonTooltip anchor={snapshotButton} active reason={launchReason} descriptionId={tooltipId+"-launch"} />}
+      {ui.form && !recovery && pendingCapture && <>
+        <ReasonTooltip anchor={snapshotSubmit} active reason={captureReason} descriptionId={tooltipId+"-submit"} />
+        <ReasonTooltip anchor={snapshotCancel} active reason={captureReason} descriptionId={tooltipId+"-cancel"} />
+      </>}
+      {checkingManually && <>
+        <ReasonTooltip anchor={snapshotCheck} active reason={captureReason} descriptionId={tooltipId+"-check"} />
+        <ReasonTooltip anchor={snapshotReturn} active reason={captureReason} descriptionId={tooltipId+"-return"} />
+      </>}
       <div className="ax-draft-page" data-part="page">
         <Editor key={s.editorKey} blocks={s.blocks} editable={!isBusy} onDocChange={docChange} onReady={(view) => {
           editor.current = view;

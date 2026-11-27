@@ -1,0 +1,35 @@
+.ax-tooltip {
+  position: fixed;
+  z-index: var(--ax-z-tooltip);
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  box-sizing: border-box;
+  inline-size: max-content;
+  max-inline-size: 260px;
+  padding: var(--ax-space-2) var(--ax-space-3);
+  border-radius: 6px;
+  background: var(--ax-color-text-primary);
+  color: var(--ax-tooltip-paper, var(--ax-color-surface-raised));
+  font-family: var(--ax-type-family-chrome);
+  font-size: .75rem;
+  line-height: 1rem;
+  font-weight: var(--ax-type-caption-weight);
+  letter-spacing: var(--ax-type-caption-tracking);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  box-shadow: none;
+  transition: none;
+  animation: none;
+}
+.ax-tooltip[hidden] { display: none; }
+:root[data-theme="dark"] .ax-tooltip {
+  background: var(--ax-color-surface-raised);
+  color: var(--ax-color-text-primary);
+  border: 1px solid var(--ax-color-border-control);
+}
+@media (forced-colors: active) {
+  :root .ax-tooltip, :root[data-theme="dark"] .ax-tooltip {
+    background: Canvas; color: CanvasText; border: 1px solid CanvasText; forced-color-adjust: auto;
+  }
+}
