@@ -1,17 +1,17 @@
+import { workingRead } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 import css from "../src/shell/drawer.css?raw";
 import { Shell } from "../src/shell/Shell";
 import { chapterList, chapterPath, detailText, fourRows, reply } from "./d06.fixtures";
-import { contrast, noDraftRead } from "./draftFixtures";
+import { contrast } from "./draftFixtures";
 import { chaptersPath, mockApi, treeA } from "./helpers";
 import { historyColors, historyPath, historyTwo, permittedHistoryTokens } from "./historyFixtures";
 
 test("AC1 draws the drawer, quiet Close button, History door and open-only underline", async () => {
   mockApi([
     { method: "GET", path: chaptersPath, reply: chapterList([fourRows[0]]) },
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    noDraftRead,
+    workingRead(chapterPath, reply(detailText)),
     { method: "GET", path: historyPath, reply: reply(historyTwo) },
   ]);
   const { container } = render(<Shell tree={treeA} />);

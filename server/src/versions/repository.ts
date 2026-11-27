@@ -1,3 +1,4 @@
+import { reportFailure } from "../logging.js";
 import type { Pool } from "pg";
 import type { BlockRow, ChapterRef, ChapterRow, VersionRow } from "../corpus/repo.js";
 import { AppError } from "../errors.js";
@@ -35,7 +36,8 @@ export async function getVersionText(pool: Pool, chapter: ChapterRef, versionId:
   } catch (error) {
     try {
       await client.query("ROLLBACK");
-    } catch {
+    } catch (rollbackError) {
+      reportFailure("database_rollback_failed", rollbackError);
       discardClient = true;
     }
     throw error;

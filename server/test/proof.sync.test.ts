@@ -1,3 +1,4 @@
+import { writeGuard } from "./helpers.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -38,7 +39,7 @@ test("AXB-0080 AC2 autosave replies reflect its place in either Series lock orde
       const path = "/chapters/" + chapter.id;
       const sent = await app.inject({
         method: "POST", url: path + "/send", headers: alice,
-        payload: { content: "abc", parent_version: version.id },
+        payload: { content: "abc", parent_version: version.id, ...writeGuard(version.id) },
       });
       expect(sent.statusCode).toBe(201);
       const active = sent.json<VersionWritten>().version.id;

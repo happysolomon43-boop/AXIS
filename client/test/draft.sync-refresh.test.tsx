@@ -1,3 +1,4 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { undo, undoDepth } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
@@ -22,8 +23,7 @@ function mount(sync: ChapterSync, metadata: Handler["reply"], options: { initial
   const onLockChange = vi.fn();
   const onWritten = vi.fn();
   const api = mockApi([
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    { method: "GET", path: draftPath, reply: options.draft ?? head(sync) },
+    workingRead(chapterPath, reply(detailText), options.draft ?? head(sync)),
     { method: "GET", path, reply: metadata },
     ...(options.extra ?? []),
   ]);
@@ -97,7 +97,7 @@ test("AXB-0085 AC2 coalesces while autosave or opening is active", async () => {
   ui.unmount(); vi.clearAllTimers(); vi.useRealTimers();
   const open = deferred<ReturnType<typeof head>>();
   const opening = mount(syncInBook, projected(syncRevisedSame), { initial:5, draft: () => open.promise });
-  await waitFor(() => expect(opening.calls.map(c => c.path)).toContain(draftPath));
+  await waitFor(() => expect(opening.calls.map(c => c.path)).toContain(workingPath(chapterPath)));
   opening.token(5); expect(count(opening.calls)).toBe(0);
   opening.token(6); opening.token(7); expect(count(opening.calls)).toBe(0);
   await act(async () => { open.resolve(head(syncInBook)); });
@@ -119,14 +119,13 @@ test("AXB-0085 AC3 superseded and unmounted replies cannot land", async () => {
   ui.unmount();
   const B = "ch_00000000000b", bPath = "/api/chapters/" + B;
   const { calls } = mockApi([
-    { method:"GET", path:bPath, reply:reply({ ...detailText, chapter:{ ...chapterA,id:B } }) },
-    { method:"GET", path:bPath+"/draft", reply:reply({ ...draftNone, chapter:{ ...chapterA,id:B }, sync:syncDraftOnly }) },
+    workingRead(bPath, reply({ ...detailText, chapter:{ ...chapterA,id:B }, version: { ...detailText.version!, chapter_id: B } }), reply({ ...draftNone, chapter:{ ...chapterA,id:B }, sync:syncDraftOnly })),
   ]);
   const next = render(<Draft chapterId={B} syncRefreshToken={2} onLockChange={vi.fn()} onWritten={vi.fn()} />);
   await waitFor(() => expect(next.container.querySelector('[data-state="clean"]')).not.toBeNull());
   await act(async () => { second.resolve(projected(syncInBook)); });
   expect(next.container.querySelector('[data-part="version-chip"]')).toHaveTextContent("Draft only");
-  expect(calls.map(c => c.path)).toEqual([bPath,bPath+"/draft"]);
+  expect(calls.map(c => c.path)).toEqual([workingPath(bPath)]);
   next.unmount();
 });
 test("AXB-0085 AC4 errors and null consume only their own token", async () => {
@@ -154,7 +153,7 @@ test("AXB-0085 AC4 errors and null consume only their own token", async () => {
   await act(async () => { bad.token(1); });
   expect(bad.chip()).toHaveTextContent(/^Being revised$/);
   expect(bad.root).toHaveAttribute("data-state","clean");
-  expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   bad.unmount();
 });
 

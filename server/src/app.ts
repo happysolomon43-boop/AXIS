@@ -1,4 +1,5 @@
 import Fastify, {
+  LogController,
   type FastifyError,
   type FastifyInstance,
   type FastifyReply,
@@ -9,6 +10,7 @@ import { identifyRequest, registerIdentity } from "./auth.js";
 import { registerCorpusRoutes } from "./corpus/routes.js";
 import { registerDraftRoutes } from "./drafts/routes.js";
 import { AppError } from "./errors.js";
+import { failureFields } from "./logging.js";
 import { readClientOrigins } from "./http/clientOrigins.js";
 import { applyCors, registerCors } from "./http/cors.js";
 import { registerPullBackRoutes } from "./pullback/routes.js";
@@ -44,7 +46,7 @@ function handleError(error: FastifyError | AppError, request: FastifyRequest, re
     return sendError(reply, new AppError(400, "validation_failed", "Request could not be parsed"));
   }
 
-  request.log.error(error);
+  request.log.error({ ...failureFields("request_failed", error), statusCode: 500, route: request.routeOptions.url });
   return sendError(reply, new AppError(500, "internal", "Internal error"));
 }
 
@@ -52,7 +54,7 @@ function routeNotFound(_request: FastifyRequest, reply: FastifyReply) {
   return sendError(reply, new AppError(404, "not_found", "Route not found"));
 }
 
-export function buildApp(deps: Deps): FastifyInstance {
+export function buildApp(deps: Deps, logStream?: NodeJS.WritableStream): FastifyInstance {
   const origins = readClientOrigins(process.env.AXIS_ALLOWED_CLIENT_ORIGINS);
   const app = Fastify({
     bodyLimit: 1048576,
@@ -62,13 +64,10 @@ export function buildApp(deps: Deps): FastifyInstance {
     ajv: {
       customOptions: { removeAdditional: false, coerceTypes: false, allErrors: true },
     },
-    logger: process.env.NODE_ENV === "test" ? false : {
-      level: "info",
-      serializers: {
-        req: (request) => ({ method: request.method, url: request.url }),
-        res: (reply) => ({ statusCode: reply.statusCode }),
-      },
-    },
+    requestIdHeader: false,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger: logStream ? { level: "info", stream: logStream }
+      : process.env.NODE_ENV === "test" ? false : { level: "info" },
     frameworkErrors(error, request, reply) {
       // Routing errors occur before the regular request hooks.
       if (origins.size && applyCors(request, reply, origins)) return;
@@ -83,6 +82,10 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.removeContentTypeParser("text/plain");
 
   app.setErrorHandler(handleError);
+  app.addHook("onResponse", (request, reply, done) => {
+    request.log.info({ event: "request_completed", route: request.routeOptions.url, statusCode: reply.statusCode });
+    done();
+  });
   app.setNotFoundHandler(routeNotFound);
   registerCors(app, origins);
   registerIdentity(app);

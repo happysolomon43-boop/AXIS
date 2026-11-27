@@ -1,3 +1,4 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
@@ -20,7 +21,7 @@ vi.mock("../src/editor/Editor", async (importOriginal) => {
   ) };
 });
 
-const draftReads = (calls: Call[]) => calls.filter(({ method, path }) => method === "GET" && (path === chapterPath || path === draftPath))
+const draftReads = (calls: Call[]) => calls.filter(({ method, path }) => method === "GET" && (path === workingPath(chapterPath) || path === draftPath))
   .map(({ path }) => path);
 const readHead = () => withSync({ status: 200, body: draftNone }, syncInBook);
 afterEach(() => vi.useRealTimers());
@@ -42,10 +43,10 @@ test("AXB-0079 AC1 reloads with the old Draft and Editor visible until both read
     expect(ui.part("reading", root)).toBeNull();
   };
   stillReading();
-  expect(draftReads(ui.calls)).toEqual([chapterPath, draftPath, chapterPath]);
+  expect(draftReads(ui.calls)).toEqual([workingPath(chapterPath), workingPath(chapterPath)]);
   await act(async () => { chapter.resolve(reply(detailAfterRestore)); });
   stillReading();
-  expect(draftReads(ui.calls)).toEqual([chapterPath, draftPath, chapterPath, draftPath]);
+  expect(draftReads(ui.calls)).toEqual([workingPath(chapterPath), workingPath(chapterPath)]);
   await act(async () => { head.resolve(readHead()); });
   expect(ui.root()).toBe(root);
   expect(root).toHaveAttribute("data-state", "clean");
@@ -54,9 +55,9 @@ test("AXB-0079 AC1 reloads with the old Draft and Editor visible until both read
   expect(ui.part("reading", root)).toBeNull();
   expect(ui.part("restore-status")).toHaveTextContent("Restored into your draft. The Book is unchanged until you send.");
   expect(ui.calls.slice(start).map(({ method, path }) => method + " " + path).sort()).toEqual([
-    "GET " + chapterPath, "GET " + draftPath, "GET " + chaptersPath, "GET " + historyPath, "POST " + restorePath,
+    "GET " + workingPath(chapterPath), "GET " + chaptersPath, "GET " + historyPath, "POST " + restorePath,
   ].sort());
-  expect(ui.calls.find(({ method }) => method === "POST")?.body).toEqual({ version_id: rowB.id });
+  expect(ui.calls.find(({ method }) => method === "POST")?.body).toMatchObject({ version_id: rowB.id, request_id: expect.any(String) });
 });
 
 test("AXB-0079 AC2 either failing reload read keeps the text and retries via Reload latest", async () => {
@@ -93,7 +94,7 @@ test("AXB-0079 AC3 keeps a locked Draft and ignores tokens while loading, failed
   expect(root).toHaveAttribute("data-state", "unsaved");
   expect(shell.part("editor", root)).toHaveTextContent("Two!");
   expect(shell.part("restore-status")).toHaveTextContent("Restored as a new version. The text in your draft was not replaced.");
-  expect(draftReads(shell.calls)).toEqual([chapterPath, draftPath]);
+  expect(draftReads(shell.calls)).toEqual([workingPath(chapterPath)]);
   expect(shell.calls.filter(({ method }) => method === "PUT")).toHaveLength(0);
   shell.unmount();
   vi.useRealTimers();
@@ -101,7 +102,7 @@ test("AXB-0079 AC3 keeps a locked Draft and ignores tokens while loading, failed
   const renderDraft = (token: number) => <Draft chapterId={chapterA.id} reloadToken={token}
     onLockChange={vi.fn()} onWritten={vi.fn()} />;
   const open = deferred<ReturnType<typeof reply>>();
-  const initial = mockApi([{ method: "GET", path: chapterPath, reply: () => open.promise }]);
+  const initial = mockApi([workingRead(chapterPath, () => open.promise)]);
   const pending = render(renderDraft(0));
   const pendingRoot = pending.container.querySelector('[data-surface="draft"]');
   expect(pendingRoot).toHaveAttribute("data-state", "loading");
@@ -115,8 +116,7 @@ test("AXB-0079 AC3 keeps a locked Draft and ignores tokens while loading, failed
 
   const put = deferred<ReturnType<typeof reply>>();
   const busy = mockApi([
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    { method: "GET", path: draftPath, reply: readHead() },
+    workingRead(chapterPath, reply(detailText), readHead()),
     { method: "PUT", path: draftPath, reply: () => put.promise },
   ]);
   const ui = render(renderDraft(0));
@@ -134,9 +134,9 @@ test("AXB-0079 AC3 keeps a locked Draft and ignores tokens while loading, failed
   expect(busyRoot).toHaveAttribute("data-state", "clean");
   expect(busyRoot).toHaveAttribute("data-autosave", "saving");
   ui.rerender(renderDraft(1));
-  expect(draftReads(busy.calls)).toEqual([chapterPath, draftPath]);
+  expect(draftReads(busy.calls)).toEqual([workingPath(chapterPath)]);
   await act(async () => { put.resolve(reply(putOk(1))); });
-  expect(draftReads(busy.calls)).toEqual([chapterPath, draftPath]);
+  expect(draftReads(busy.calls)).toEqual([workingPath(chapterPath)]);
   ui.unmount();
 });
 
@@ -146,17 +146,16 @@ test("AXB-0079 AC4 records the token when selecting a new chapter and ignores an
   expect(ui.part("editor", ui.root())).toHaveTextContent(restoredText);
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open Chapter 2" })); });
   expect(ui.root()).toHaveAttribute("data-state", "clean");
-  expect(ui.calls.filter(({ path }) => path === ui.pathB || path === ui.pathB + "/draft").map(({ method, path }) => [method, path]))
-    .toEqual([["GET", ui.pathB], ["GET", ui.pathB + "/draft"]]);
+  expect(ui.calls.filter(({ path }) => path === workingPath(ui.pathB)).map(({ method, path }) => [method, path]))
+    .toEqual([["GET", workingPath(ui.pathB)]]);
   ui.unmount();
 
   const { calls } = mockApi([
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    { method: "GET", path: draftPath, reply: readHead() },
+    workingRead(chapterPath, reply(detailText), readHead()),
   ]);
   const props = { chapterId: chapterA.id, reloadToken: 1, onLockChange: vi.fn(), onWritten: vi.fn() };
   const draft = render(<Draft {...props} />);
   await waitFor(() => expect(draft.container.querySelector('[data-surface="draft"]')).toHaveAttribute("data-state", "clean"));
   draft.rerender(<Draft {...props} />);
-  expect(draftReads(calls)).toEqual([chapterPath, draftPath]);
+  expect(draftReads(calls)).toEqual([workingPath(chapterPath)]);
 });

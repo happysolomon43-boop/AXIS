@@ -1,3 +1,4 @@
+import { writeResponse } from "./writeFixtures";
 import { useState } from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
@@ -19,8 +20,8 @@ type Handler = Parameters<typeof mockApi>[0][number];
 function mount(history: Handler["reply"], post: Handler["reply"] = restoreReplyCp) {
   const { calls } = mockApi([
     { method: "GET", path: historyPath, reply: history },
-    { method: "GET", path: /\/versions\/ver_[0-9a-f]+$/, reply: reply(versionTextB) },
-    { method: "POST", path: restorePath, reply: post },
+    { method: "GET", path: /\/versions\/ver_[0-9a-f]+$/, reply: (call) => reply({ ...versionTextB, version: { ...versionTextB.version, id: call.path.split("/").at(-1) } }) },
+    { method: "POST", path: restorePath, reply: async (call, n) => writeResponse(call, typeof post === "function" ? await post(call, n) : post) },
   ]);
   function Surface() {
     const [token, setToken] = useState(0);

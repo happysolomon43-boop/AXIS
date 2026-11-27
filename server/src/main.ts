@@ -1,3 +1,4 @@
+import { reportFailure } from "./logging.js";
 import { buildApp } from "./app.js";
 import { createPool } from "./db/pool.js";
 
@@ -11,11 +12,6 @@ function readConfig(): { url: string; port: number } {
     throw new Error("PORT must be an integer between 1 and 65535");
   }
   return { url, port };
-}
-
-function reportError(error: unknown): void {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
 }
 
 async function start(): Promise<void> {
@@ -37,7 +33,10 @@ async function start(): Promise<void> {
       process.exitCode = 0;
     }
 
-    const onSignal = () => { void shutdown().catch(reportError); };
+    const onSignal = () => { void shutdown().catch((error: unknown) => {
+      reportFailure("shutdown_failed", error);
+      process.exitCode = 1;
+    }); };
     process.on("SIGTERM", onSignal);
     process.on("SIGINT", onSignal);
   } catch (error) {
@@ -49,5 +48,6 @@ async function start(): Promise<void> {
 try {
   await start();
 } catch (error) {
-  reportError(error);
+  reportFailure("startup_failed", error);
+  process.exitCode = 1;
 }

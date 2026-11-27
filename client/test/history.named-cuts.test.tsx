@@ -1,9 +1,10 @@
+import { workingRead } from "./writeFixtures";
 import { act,fireEvent,render,screen,waitFor } from "@testing-library/react";
 import { expect,test } from "vitest";
 import { History } from "../src/history/History";
 import { Shell } from "../src/shell/Shell";
 import { chapterList,chapterPath,detailText,fourRows,reply } from "./d06.fixtures";
-import { draftNone,draftPath } from "./draftFixtures";
+import { draftNone } from "./draftFixtures";
 import { histB,historyPath,versionPath,versionTextB } from "./historyFixtures";
 import { deferred,mockApi,chaptersPath,treeA } from "./helpers";
 import { chapterA,eligible,named,historyEligible,historyNamed,namePath,namedHistory,seriesId,snapshot,errorReply } from "./namedCutFixtures";
@@ -49,7 +50,7 @@ test("AXB-0095 AC2 Shell preserves editor, pending guard, focus, and served defa
   const held=deferred<ReturnType<typeof reply>>();
   const {calls}=mockApi([
     {method:"GET",path:chaptersPath,reply:chapterList(fourRows.slice(0,1))},
-    {method:"GET",path:chapterPath,reply:reply(detailText)},{method:"GET",path:draftPath,reply:reply(draftNone)},
+    workingRead(chapterPath, reply(detailText), reply(draftNone)),
     {method:"GET",path:historyPath,reply:(_,n)=>reply(n===0?historyEligible:namedHistory(eligible,n===1?"Before the bell":"Default from server"))},
     {method:"POST",path:namePath,reply:()=>held.promise}
   ]);

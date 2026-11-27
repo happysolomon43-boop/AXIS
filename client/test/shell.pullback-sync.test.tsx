@@ -1,3 +1,4 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { EditorView } from "prosemirror-view";
@@ -26,8 +27,7 @@ test("AXB-0087 AC1 only the open Draft receives the landed signal",async()=>{
   const held=deferred<ReturnType<typeof reply>>();
   const {calls}=mockApi([
     {method:"GET",path:chaptersPath,reply:(_,n)=>reply(list(n===0?syncInBook:syncRevisedSame))},
-    {method:"GET",path:chapterPath,reply:reply(detailText)},
-    {method:"GET",path:draftPath,reply:head},
+    workingRead(chapterPath, reply(detailText), head),
     {method:"POST",path:pull(A),reply:postA},
     {method:"GET",path:meta,reply:()=>held.promise},
   ]);
@@ -44,17 +44,15 @@ test("AXB-0087 AC1 only the open Draft receives the landed signal",async()=>{
   expect(root(ui.container)).toBe(draft);expect(editor.view).toBe(view);
   expect(editor.view!.state.doc.eq(text)).toBe(true);
   expect(part(ui.container,"history-door")).toHaveAttribute("aria-expanded",history!);
-  expect(calls.slice(before).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+chaptersPath,"GET "+meta,"POST "+pull(A),"GET "+chapterPath,"GET "+draftPath].sort());
+  expect(calls.slice(before).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+chaptersPath,"GET "+meta,"POST "+pull(A),"GET "+workingPath(chapterPath)].sort());
 });
 test("AXB-0087 AC2 routes against live chapter; navigation does not replay token",async()=>{
   const post=deferred<"network">(), settle=deferred<ReturnType<typeof reply>>();
   const chapterB={...chapterA,id:B,order_key:"0000002000"};
   const {calls}=mockApi([
     {method:"GET",path:chaptersPath,reply:(_,n)=>n===0?reply(list(syncInBook)):n===1?settle.promise:reply(list(syncRevisedSame,n===2?syncInBook:syncRevisedSame))},
-    {method:"GET",path:chapterPath,reply:reply(detailText)},
-    {method:"GET",path:draftPath,reply:head},
-    {method:"GET",path:pathB,reply:reply({...detailText,chapter:chapterB,version:{...detailText.version!,chapter_id:B}})},
-    {method:"GET",path:pathB+"/draft",reply:reply({chapter:chapterB,draft:null,sync:syncInBook})},
+    workingRead(chapterPath, reply(detailText), head),
+    workingRead(pathB, reply({...detailText,chapter:chapterB,version:{...detailText.version!,chapter_id:B}}), reply({chapter:chapterB,draft:null,sync:syncInBook})),
     {method:"POST",path:pull(A),reply:()=>post.promise},
     {method:"POST",path:pull(B),reply:pullBackReplyB},
     {method:"GET",path:pathB+"/draft?view=sync",reply:reply({sync:syncRevisedSame})},
@@ -81,5 +79,5 @@ test("AXB-0087 AC2 routes against live chapter; navigation does not replay token
   expect(calls.filter(c=>c.path.includes("?view=sync")).map(c=>c.path)).toEqual([pathB+"/draft?view=sync"]);
   const before=calls.length;
   await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Open Chapter 1"}));});
-  expect(calls.slice(before).map(c=>c.method+" "+c.path)).toEqual(["GET "+chapterPath,"GET "+draftPath]);
+  expect(calls.slice(before).map(c=>c.method+" "+c.path)).toEqual(["GET "+workingPath(chapterPath)]);
 });

@@ -1,3 +1,4 @@
+import { writeGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -29,7 +30,7 @@ beforeEach(async () => {
   try {
     const written = await setup.inject({
       method: "POST", url: `/chapters/${first.chapter.id}/versions`, headers: alice,
-      payload: { content: revised, parent_version: first.version.id },
+      payload: { content: revised, ...writeGuard(first.version.id), parent_version: first.version.id },
     });
     expect(written.statusCode, written.body).toBe(201);
     next = written.json<VersionWritten>();

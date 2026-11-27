@@ -1,3 +1,5 @@
+import { observedWriteGuard } from "./helpers.js";
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -6,7 +8,7 @@ import {
   createChapterWithFirstVersion, type ChapterCreated, type ChapterDetail, type ChapterHistory, type VersionWritten,
 } from "../src/corpus/repo.js";
 import type { VersionText } from "../src/versions/repository.js";
-import type { RestoreWritten } from "../src/versions/restore.js";
+import type { WriteResult } from "../src/writes/receipts.js";
 import { makePool, resetDb } from "./helpers.js";
 import { emptyHash, intakeCounts, seedSeries } from "./seed.js";
 
@@ -45,7 +47,9 @@ afterEach(() => app.close());
 afterAll(() => pool.end());
 
 async function write<T>(method: "POST" | "PUT", url: string, payload: object): Promise<T> {
-  const response = await app.inject({ method, url, headers: alice, payload });
+  const guarded = url.endsWith("/restore") ? { request_id: randomUUID() }
+      : method === "POST" ? await observedWriteGuard(pool, first.chapter.id) : {};
+  const response = await app.inject({ method, url, headers: alice, payload: { ...guarded, ...payload } });
   expect(response.statusCode, response.body).toBe(method === "PUT" ? 200 : 201);
   return response.json<T>();
 }
@@ -57,7 +61,7 @@ async function read<T>(suffix = ""): Promise<T> {
 }
 
 function restore(version_id: string) {
-  return write<RestoreWritten>("POST", `${path}/restore`, { version_id });
+  return write<WriteResult>("POST", `${path}/restore`, { version_id });
 }
 
 function putHead(content: string, base_version = third.version.id) {
@@ -89,7 +93,7 @@ test("AC1 copies text and hints without a head or any change to the active or ea
   const source = versions.find(({ id }) => id === second.version.id);
   if (!source) throw new Error("The seeded source is missing from history");
   const written = await restore(second.version.id);
-  expect(written).toEqual({
+  expect(written).toMatchObject({
     chapter: { id: first.chapter.id, book_id: book.id, order_key: "0000001000" },
     version: {
       id: expect.stringMatching(/^ver_[0-9a-f]{12}$/), chapter_id: first.chapter.id, version_no: 4,
@@ -188,7 +192,7 @@ test("AC4 applies validation and ownership in order and rolls back every write o
   await putHead("# Title\n\nThree!!");
   const before = await intakeCounts(pool);
   const head = await read("/draft");
-  const valid = { version_id: first.version.id };
+  const valid = { version_id: first.version.id, request_id: randomUUID() };
   const missingVersion = ["not_found", "Version not found"] as const;
   const missingChapter = ["not_found", "Chapter not found"] as const;
   const invalidBody = ["validation_failed", "Request validation failed"] as const;
@@ -198,9 +202,9 @@ test("AC4 applies validation and ownership in order and rolls back every write o
     [path, { "content-type": "text/plain" }, "invalid", 401,
       ["auth_required", "Missing or invalid X-Axis-User header"]],
     [path, bob, valid, 404, missingChapter],
-    [path, bob, { version_id: "ver_\u0000" }, 404, missingChapter],
+    [path, bob, { version_id: "ver_\u0000", request_id: randomUUID() }, 404, missingChapter],
     ["/chapters/ch_000000000000", alice, valid, 404, missingChapter],
-    [path, alice, { version_id: "ver_\u0000" }, 404, missingVersion],
+    [path, alice, { version_id: "ver_\u0000", request_id: randomUUID() }, 404, missingVersion],
     [path, alice, {}, 400, invalidBody],
     [path, alice, { version_id: "" }, 400, invalidBody],
     [path, alice, { version_id: 42 }, 400, invalidBody],
@@ -218,7 +222,7 @@ test("AC4 applies validation and ownership in order and rolls back every write o
   }
   expect(apiPool.connect).not.toHaveBeenCalled();
   for (const version_id of ["ver_000000000000", other.version.id]) {
-    const response = await app.inject({ method: "POST", url: `${path}/restore`, headers: alice, payload: { version_id } });
+    const response = await app.inject({ method: "POST", url: `${path}/restore`, headers: alice, payload: { version_id, request_id: randomUUID() } });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: { code: missingVersion[0], message: missingVersion[1], details: null } });
   }

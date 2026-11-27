@@ -1,3 +1,4 @@
+import { writeGuard } from "./helpers.js";
 import { afterAll, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ChapterCreated, ChapterDetail, VersionWritten } from "../src/corpus/repo.js";
@@ -11,7 +12,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-test("AC1 applies all thirteen migrations and installs word count and version activation", async () => {
+test("AC1 applies all migrations and installs word count and version activation", async () => {
   const { rows } = await pool.query<{ filename: string }>(
     "SELECT filename FROM schema_migrations ORDER BY filename",
   );
@@ -21,6 +22,7 @@ test("AC1 applies all thirteen migrations and installs word count and version ac
     "0008_commit_inputs_activate.sql", "0009_word_count.sql", "0010_chapter_drafts.sql",
     "0011_chapter_pullbacks.sql", "0012_named_cuts.sql", "0013_snapshot_capture_requests.sql", "0014_snapshot_label_lifecycles.sql",
     "0015_restore_checkpoint_labels.sql",
+    "0016_chapter_write_receipts.sql",
   ]);
   expect((await pool.query("SELECT axis_word_count('abc') AS count")).rows).toEqual([{ count: 1 }]);
   const { rows: [definition] } = await pool.query<{ body: string }>(
@@ -51,7 +53,7 @@ test("Break-It Probe rolls back send on activation failure and preserves the nex
       method: "POST" as const,
       url: `/chapters/${chapter.id}/send`,
       headers,
-      payload: { content: "hello" },
+      payload: { content: "hello", ...writeGuard(version.id) },
     };
 
     try {

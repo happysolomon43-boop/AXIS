@@ -1,9 +1,10 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../src/App";
 import { chapterList, chapterPath, detailText, fourRows, reply } from "./d06.fixtures";
-import { draftPath, edit, fakeClock, noDraftRead } from "./draftFixtures";
+import { edit, fakeClock } from "./draftFixtures";
 import { chaptersPath, deferred, mockApi, seriesA, seriesPath, treeA } from "./helpers";
 import { histA, histB, historyPath, historyTwo, versionPath, versionTextA, versionTextB } from "./historyFixtures";
 
@@ -26,8 +27,7 @@ test("AXB-0058 AC2 keeps the selected version and unsaved Draft intact when anot
     { method: "GET", path: seriesPath, reply: reply({ series: [seriesA] }) },
     { method: "GET", path: `${seriesPath}/${seriesA.id}`, reply: reply(treeA) },
     { method: "GET", path: chaptersPath, reply: chapterList([fourRows[0]]) },
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    noDraftRead,
+    workingRead(chapterPath, reply(detailText)),
     { method: "GET", path: historyPath, reply: reply(historyTwo) },
     { method: "GET", path: versionPath(histB.id), reply: () => delayed.promise },
     { method: "GET", path: versionPath(histA.id), reply: reply(versionTextA) },
@@ -62,9 +62,9 @@ test("AXB-0058 AC2 keeps the selected version and unsaved Draft intact when anot
   expect(b).toHaveAttribute("aria-expanded", "true");
   expect(lines()).toEqual(["Title", "One", "Two"]);
 
-  expect(calls.filter(({ path }) => path === chapterPath || path.startsWith(`${chapterPath}/`))
+  expect(calls.filter(({ path }) => path === workingPath(chapterPath) || path.startsWith(`${chapterPath}/`))
     .map(({ method, path }) => [method, path])).toEqual([
-    ["GET", chapterPath], ["GET", draftPath], ["GET", historyPath],
+    ["GET", workingPath(chapterPath)], ["GET", historyPath],
     ["GET", versionPath(histB.id)], ["GET", versionPath(histA.id)],
   ]);
   expect(calls.every(({ method }) => method === "GET")).toBe(true);

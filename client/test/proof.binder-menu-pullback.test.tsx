@@ -1,8 +1,9 @@
+import { workingRead } from "./writeFixtures";
 import {act,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {expect,test,vi} from "vitest";
 import type {EditorView} from "prosemirror-view";
 import {Shell} from "../src/shell/Shell";
-import {A,V,V2,tree,list,landed,listPath,chapterPath,draftPath,pullPath,meta,detail,nextDetail,head,nextHead,revised,row,part} from "./d18Fixtures";
+import {A,V,V2,tree,list,landed,listPath,chapterPath,pullPath,meta,detail,nextDetail,head,nextHead,revised,row,part} from "./d18Fixtures";
 import {reply} from "./d06.fixtures";
 import {mockApi} from "./helpers";
 const watch=vi.hoisted(()=>({view:null as EditorView|null,notice:vi.fn(),opened:vi.fn()}));
@@ -11,7 +12,7 @@ vi.mock("../src/binder/Binder",async original=>{const {Binder}=await original<ty
 test("AXB-0134 AC2 one committed lost reply settles once on A/V without another write",async()=>{
  vi.stubEnv("VITE_AXIS_USER","usr_aa");watch.notice.mockClear();watch.opened.mockClear();
  const recorded={versions:[{id:V,active:true}],marks:[] as string[],active:V};let committed=false;
- const {calls}=mockApi([{method:"GET",path:listPath,reply:()=>reply(committed?landed:list)},{method:"GET",path:chapterPath,reply:()=>reply(committed?nextDetail:detail)},{method:"GET",path:draftPath,reply:()=>reply(committed?nextHead():head)},{method:"GET",path:meta,reply:reply({sync:revised})},{method:"POST",path:pullPath,reply:call=>{expect(call.body).toEqual({expected_active_version_id:V});expect(committed).toBe(false);recorded.versions.push({id:V2,active:false});recorded.marks.push(V);committed=true;return "network";}}]);
+ const {calls}=mockApi([{method:"GET",path:listPath,reply:()=>reply(committed?landed:list)},workingRead(chapterPath, ()=>reply(committed?nextDetail:detail), ()=>reply(committed?nextHead():head)),{method:"GET",path:meta,reply:reply({sync:revised})},{method:"POST",path:pullPath,reply:call=>{expect(call.body).toEqual({expected_active_version_id:V});expect(committed).toBe(false);recorded.versions.push({id:V2,active:false});recorded.marks.push(V);committed=true;return "network";}}]);
  const ui=render(<Shell tree={tree}/>);
  try{
  fireEvent.click(await screen.findByRole("button",{name:"Open Chapter 2"}));const draft=ui.container.querySelector('[data-surface="draft"]')!;await waitFor(()=>expect(draft).toHaveAttribute("data-state","clean"));

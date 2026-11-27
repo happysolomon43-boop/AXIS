@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
-import { AppError } from "../errors.js";
 import { uuidPattern } from "./capture.js";
 import { changeChapterSnapshotLabel, type SnapshotLabelAction } from "./label-lifecycle.js";
 const uuid={type:"string",pattern:uuidPattern,minLength:36,maxLength:36};
@@ -13,12 +12,7 @@ export function registerSnapshotLabelRoutes(app:FastifyInstance,{pool}:Deps):voi
     ]}}
   },async(request,reply)=>{
     const actor=requireUser(request);
-    try {
-      const result=await changeChapterSnapshotLabel(pool,actor,request.params.id,request.params.versionId,request.body);
-      return reply.header("Cache-Control","no-store").code(200).send(result);
-    } catch(error) {
-      if(error instanceof AppError)throw error;
-      throw new AppError(500,"internal","Internal error");
-    }
+    const result=await changeChapterSnapshotLabel(pool,actor,request.params.id,request.params.versionId,request.body);
+    return reply.header("Cache-Control","no-store").code(200).send(result);
   });
 }

@@ -1,3 +1,4 @@
+import { observedWriteGuard, writeGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -39,7 +40,7 @@ async function post(id: string, part: string, status: number, payload?: object) 
 
 async function sent() {
   const { id, version } = await create();
-  const result = await post(id, "send", 201, { content: "abc", parent_version: version });
+  const result = await post(id, "send", 201, { content: "abc", parent_version: version, ...writeGuard(version) });
   return { id, version: result.json<VersionWritten>().version.id };
 }
 
@@ -65,7 +66,7 @@ async function seedStates() {
   const d4 = await sent();
   await head(d4, "  abc \n");
   const d5 = await sent();
-  await post(d5.id, "versions", 201, { content: "abd", parent_version: d5.version });
+  await post(d5.id, "versions", 201, { content: "abd", parent_version: d5.version, ...await observedWriteGuard(pool, d5.id) });
   const d6 = await sent();
   await post(d6.id, "activate", 200, { version_id: null });
   return [d1, d2, d3, d4, d5, d6];
@@ -93,7 +94,7 @@ test("AXB-0076 AC2 reports a pull-back mark until the active version changes", a
   expect((await draft(chapter.id)).sync).toEqual({ state: "being_revised", same: true });
   await head(chapter, "abd");
   expect((await draft(chapter.id)).sync).toEqual({ state: "being_revised", same: false });
-  await post(chapter.id, "send", 201, { content: "abe", parent_version: chapter.version });
+  await post(chapter.id, "send", 201, { content: "abe", parent_version: chapter.version, ...await observedWriteGuard(pool, chapter.id) });
   expect(await draft(chapter.id)).toMatchObject({ draft: null, sync: { state: "in_book", same: true } });
 });
 

@@ -1,9 +1,10 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { Shell } from "../src/shell/Shell";
 import { chapterPath, detailText, reply } from "./d06.fixtures";
-import { draftPath, edit, fakeClock, noDraftRead } from "./draftFixtures";
+import { edit, fakeClock } from "./draftFixtures";
 import { chaptersPath, deferred, mockApi } from "./helpers";
 import { pbList, pbListAfterB, pbTree } from "./pullbackFixtures";
 
@@ -26,8 +27,7 @@ test("AXB-0073 AC2 recognizes a lost Pull back reply and keeps the writer's unsa
   const path = `/api/chapters/${b.id}/pull-back`;
   const { calls } = mockApi([
     { method: "GET", path: chaptersPath, reply: (_, n) => reply(n === 0 ? pbList : pbListAfterB) },
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    noDraftRead,
+    workingRead(chapterPath, reply(detailText)),
     { method: "POST", path, reply: () => post.promise },
   ]);
   const { container } = render(<Shell tree={pbTree} />);
@@ -64,7 +64,7 @@ test("AXB-0073 AC2 recognizes a lost Pull back reply and keeps the writer's unsa
   expect(remaining).toHaveLength(1);
   for (const button of remaining) expect(button).toHaveAttribute("aria-disabled", "true");
   expect(calls.map(({ method, path }) => [method, path])).toEqual([
-    ["GET", chaptersPath], ["GET", chapterPath], ["GET", draftPath], ["POST", path], ["GET", chaptersPath],
+    ["GET", chaptersPath], ["GET", workingPath(chapterPath)], ["POST", path], ["GET", chaptersPath],
   ]);
-  expect(calls[3].body).toEqual({expected_active_version_id:b.active_version_id});
+  expect(calls.find(call => call.method === "POST")?.body).toEqual({expected_active_version_id:b.active_version_id});
 });

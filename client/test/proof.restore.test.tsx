@@ -1,12 +1,14 @@
+import { receiptPath, receiptRoute, workingPath, workingRead, writeResult } from "./writeFixtures";
+import type { WriteResult } from "../src/api/types";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../src/App";
 import { chapterList, chapterPath, detailText, fourRows, reply } from "./d06.fixtures";
-import { draftPath, edit, fakeClock, noDraftRead } from "./draftFixtures";
+import { edit, fakeClock } from "./draftFixtures";
 import { chaptersPath, deferred, mockApi, seriesA, seriesPath, treeA } from "./helpers";
 import { historyPath, versionPath, versionTextB } from "./historyFixtures";
-import { historyAfterRestore, historyH3, restorePath, rowB } from "./restoreFixtures";
+import { historyAfterRestore, historyH3, restorePath, restoreReply, rowB } from "./restoreFixtures";
 
 const editor = vi.hoisted(() => ({ view: null as EditorView | null }));
 vi.mock("../src/editor/Editor", async (importOriginal) => {
@@ -24,15 +26,16 @@ afterEach(() => vi.useRealTimers());
 test("AXB-0065 AC2 recognizes the lost restore reply and preserves the writer's new edit", async () => {
   const post = deferred<"network">();
   const preview = versionPath(rowB.id);
+  let written: WriteResult;
   const { calls } = mockApi([
     { method: "GET", path: seriesPath, reply: reply({ series: [seriesA] }) },
     { method: "GET", path: `${seriesPath}/${seriesA.id}`, reply: reply(treeA) },
     { method: "GET", path: chaptersPath, reply: chapterList([fourRows[0]]) },
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    noDraftRead,
+    workingRead(chapterPath, reply(detailText)),
     { method: "GET", path: historyPath, reply: (_, n) => reply(n === 0 ? historyH3 : historyAfterRestore) },
     { method: "GET", path: preview, reply: reply(versionTextB) },
-    { method: "POST", path: restorePath, reply: () => post.promise },
+    { method: "POST", path: restorePath, reply: call => { written = writeResult(call, restoreReply.body); return post.promise; } },
+    { method: "GET", path: receiptRoute, reply: () => reply({ receipt: written }) },
   ]);
   const { container } = render(<App />);
   const part = (name: string) => container.querySelector<HTMLElement>(`[data-part="${name}"]`)!;
@@ -71,7 +74,7 @@ test("AXB-0065 AC2 recognizes the lost restore reply and preserves the writer's 
 
   expect(calls.map(({ method, path }) => `${method} ${path}`).sort()).toEqual([
     `GET ${seriesPath}`, `GET ${seriesPath}/${seriesA.id}`,
-    `GET ${chaptersPath}`, `GET ${chaptersPath}`, `GET ${chapterPath}`, `GET ${draftPath}`,
-    `GET ${historyPath}`, `GET ${historyPath}`, `GET ${historyPath}`, `GET ${preview}`, `POST ${restorePath}`,
+    `GET ${chaptersPath}`, `GET ${chaptersPath}`, `GET ${workingPath(chapterPath)}`,
+    `GET ${historyPath}`, `GET ${historyPath}`, `GET ${receiptPath(chapterPath, written!.request_id)}`, `GET ${preview}`, `POST ${restorePath}`,
   ].sort());
 });

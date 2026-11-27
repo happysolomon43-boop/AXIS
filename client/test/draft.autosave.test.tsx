@@ -1,3 +1,5 @@
+import { receiptRoute, workingPath, writeResponse, writeResult } from "./writeFixtures";
+import type { WriteResult } from "../src/api/types";
 import { act, fireEvent } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { b, c, chapterPath, detailText, reply, writtenC } from "./d06.fixtures";
@@ -17,11 +19,11 @@ function unloadPrevented() {
 const expectedBlocks = [["heading", "Title"], ["paragraph", "One"], ["scene_break", ""], ["paragraph", "Two!"]];
 const edited = "# Title\n\nOne\n\n---\n\nTwo!";
 
-test("AC2 opens on a persisted head, fails on a mismatched or unreadable head, and retries the two reads", async () => {
+test("AC2 opens on a persisted head, fails on a mismatched or unreadable head, and retries the working-state read", async () => {
   const pending = deferred<ReturnType<typeof reply>>();
   let ui = mountDraft({ draft: () => pending.promise });
   await act(async () => {});
-  expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([["GET", chapterPath], ["GET", draftPath]]);
+  expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([["GET", workingPath(chapterPath)]]);
   expect(ui.root).toHaveAttribute("data-state", "loading");
   await act(async () => { pending.resolve(reply(draftHeadB)); });
   expect(ui.root).toHaveAttribute("data-state", "unsaved");
@@ -32,7 +34,7 @@ test("AC2 opens on a persisted head, fails on a mismatched or unreadable head, a
   expect(ui.part("send")).toHaveAttribute("aria-disabled", "false");
   expect(ui.onLockChange).not.toHaveBeenCalled();
   expect(ui.onWritten).not.toHaveBeenCalled();
-  expect(ui.calls).toHaveLength(2);
+  expect(ui.calls).toHaveLength(1);
   expect(ui.part("editor")).toHaveFocus();
   ui.unmount();
 
@@ -43,7 +45,7 @@ test("AC2 opens on a persisted head, fails on a mismatched or unreadable head, a
 
   ui = mountDraft({ chapter: reply({ ...detailText, version: null }) });
   await ui.loaded("failed");
-  expect(ui.calls.map(({ path }) => path)).toEqual([chapterPath]);
+  expect(ui.calls.map(({ path }) => path)).toEqual([workingPath(chapterPath)]);
   ui.unmount();
 
   ui = mountDraft({ draft: (_, n) => n === 0 ? internalError : reply(draftNone) });
@@ -51,7 +53,7 @@ test("AC2 opens on a persisted head, fails on a mismatched or unreadable head, a
   fireEvent.click(ui.part("try-again"));
   await ui.loaded();
   expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([
-    ["GET", chapterPath], ["GET", draftPath], ["GET", chapterPath], ["GET", draftPath],
+    ["GET", workingPath(chapterPath)], ["GET", workingPath(chapterPath)],
   ]);
   expect(ui.root).toHaveAttribute("data-autosave", "idle");
 });
@@ -134,7 +136,7 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
   edit(ui.view());
   await advance(2000);
   expect(ui.calls.map(({ method, path }) => [method, path])).toEqual([
-    ["GET", chapterPath], ["GET", draftPath], ["PUT", draftPath], ["GET", draftPath],
+    ["GET", workingPath(chapterPath)], ["PUT", draftPath], ["GET", workingPath(chapterPath)],
   ]);
   expect(ui.root).toHaveAttribute("data-autosave", "saved");
   edit(ui.view(), "?");
@@ -164,7 +166,7 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
     ui = mountDraft({
       draft: (_, n) => n === 0 ? reply(draftNone) : adoption.promise,
       put: (_, n) => n === 0 ? putResponse.promise : reply(putOk(1)),
-      writes: [{ method: "POST", path, reply: reply(writtenC(action === "save" ? null : c), 201) }],
+      writes: [{ method: "POST", path, reply: call => writeResponse(call, reply(writtenC(action === "save" ? null : c), 201)) }],
     });
     await ui.loaded();
     fakeClock();
@@ -174,12 +176,18 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
     expect(ui.calls.some(({ method }) => method === "POST")).toBe(false);
     await act(async () => { putResponse.resolve(action === "save" ? reply(putOk(1)) : conflictEnvelope); });
     if (action === "send") {
-      expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: draftPath });
+      expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: workingPath(chapterPath) });
       expect(ui.calls.some(({ method }) => method === "POST")).toBe(false);
-      await act(async () => { adoption.resolve(reply(draftHeadB)); });
+      await act(async () => { adoption.resolve(reply(draftHeadOther)); });
+      expect(ui.root).toHaveAttribute("data-state", "conflict");
+      expect(ui.calls.filter(({ method }) => method === "POST")).toHaveLength(0);
+      expect(ui.part("editor")).toHaveTextContent("Two!");
+      ui.unmount();
+      vi.useRealTimers();
+      continue;
     }
     expect(ui.calls.filter(({ method }) => method === "POST")).toEqual([
-      expect.objectContaining({ path, body: { content: edited, parent_version: b } }),
+      expect.objectContaining({ path, body: expect.objectContaining({ content: edited, parent_version: b, base_version: b, base_revision: 1 }) }),
     ]);
     expect(ui.root).toHaveAttribute("data-state", "clean");
     expect(ui.root).toHaveAttribute("data-autosave", "idle");
@@ -197,7 +205,7 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
     edit(ui.view());
     await advance(2000);
     await act(async () => { fireEvent.click(ui.part("save")); });
-    expect(ui.root).toHaveAttribute("data-state", "write-failed");
+    expect(ui.root).toHaveAttribute("data-state", "check-failed");
     if (put.status === 200) expect(ui.part("only-here")).toBeNull();
     else expect(ui.part("only-here")).toHaveTextContent("This text exists only in this window. Copy it out now");
     ui.unmount();
@@ -205,11 +213,13 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
   }
 
   const oldPut = deferred<ReturnType<typeof reply>>();
-  const landed = { ...detailText, version: { ...writtenC(null).version, content: edited } };
+  let receipt: WriteResult;
   ui = mountDraft({
-    chapter: (_, n) => n === 0 ? reply(detailText) : n === 1 ? internalError : reply(landed),
     put: (_, n) => n === 0 ? oldPut.promise : reply(putOk(1)),
-    writes: [{ method: "POST", path: `${chapterPath}/versions`, reply: internalError }],
+    writes: [
+      { method: "POST", path: `${chapterPath}/versions`, reply: call => { receipt = writeResult(call, writtenC(null)); return internalError; } },
+      { method: "GET", path: receiptRoute, reply: (_, n) => n === 0 ? internalError : reply({ receipt }) },
+    ],
   });
   await ui.loaded();
   fakeClock();
@@ -226,4 +236,23 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
   edit(ui.view(), "?");
   await advance(2000);
   expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 });
+});
+
+test.each(["save", "send"])("%s waits for a failing autosave and leaves the intended text in the editor", async action => {
+  const pending = deferred<ReturnType<typeof reply>>();
+  const ui = mountDraft({ put: () => pending.promise });
+  await ui.loaded();
+  fakeClock();
+  edit(ui.view());
+  await advance(2000);
+  const view = ui.view();
+  const doc = view.state.doc;
+  fireEvent.click(ui.part(action));
+  expect(ui.calls.filter(({ method }) => method === "POST")).toHaveLength(0);
+  await act(async () => { pending.resolve(internalError); });
+  expect(ui.root).toHaveAttribute("data-state", "write-failed");
+  expect(ui.calls.filter(({ method }) => method === "POST")).toHaveLength(0);
+  expect(ui.onWritten).not.toHaveBeenCalled();
+  expect(ui.onEditorReady).toHaveBeenCalledTimes(1);
+  expect(view.state.doc).toBe(doc);
 });

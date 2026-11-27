@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ChapterHistory } from "../src/corpus/repo.js";
-import type { RestoreWritten } from "../src/versions/restore.js";
+import type { WriteResult } from "../src/writes/receipts.js";
 import { makePool, resetDb } from "./helpers.js";
 import { alice, fixture, labels, state } from "./namedCutsFixtures.js";
 
@@ -16,14 +17,12 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
     (await pool.query("SELECT * FROM schema_migrations ORDER BY filename")).rows;
   const beforeMigrations = await migrations();
   try {
-    // Seed the chapter identity so Send and Save supply the only two initial versions.
-    const { rows: [chapter] } = await pool.query<{ commit_inputs: { ids: string[] } }>(
-      "SELECT commit_inputs($1, 'corpus', 'usr_alice', 'chapter.create', $2::jsonb)",
-      [f.seriesId, JSON.stringify([{ kind: "chapter", book_id: f.bookId }])],
-    );
-    const chapterId = chapter?.commit_inputs.ids[0];
-    if (!chapterId) throw new Error("Chapter seed returned no row");
-    const a = await f.write(chapterId, "The gate shut.", "send");
+    // Build the two historical versions via the Corpus intake path.
+    const a = await f.create("The gate shut.");
+    const chapterId = a.chapter.id;
+    const activate = await f.app.inject({ method: "POST", url: `/chapters/${chapterId}/activate`, headers: alice,
+      payload: { version_id: a.version.id } });
+    expect(activate.statusCode).toBe(200);
     const b = await f.write(chapterId, "The bell rang.");
     const kept = "The bell rang again.";
     const head = await f.head(chapterId, b.version.id, kept);
@@ -46,7 +45,7 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
 
     const request = {
       method: "POST" as const, url: `/chapters/${chapterId}/restore`,
-      headers: alice, payload: { version_id: a.version.id },
+      headers: alice, payload: { request_id: randomUUID(), version_id: a.version.id },
     };
     const client = await pool.connect();
     const original = client.query.bind(client);
@@ -99,13 +98,13 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
 
     const retry = await f.app.inject(request);
     expect(retry.statusCode, retry.body).toBe(201);
-    const landed = retry.json<RestoreWritten>();
+    const landed = retry.json<WriteResult>();
     expect(landed.checkpoint_version_id).toEqual(expect.any(String));
     const all = await history();
     expect(all.active_version_id).toBe(a.version.id);
     expect(all.versions.map(({ id, source }) => [id, source])).toEqual([
       [landed.version.id, "restore"], [landed.checkpoint_version_id, "checkpoint"],
-      [b.version.id, "draft_edit"], [a.version.id, "send"],
+      [b.version.id, "draft_edit"], [a.version.id, "draft_edit"],
     ]);
     const named = all.versions.filter((row) => row.snapshot !== null);
     expect(named).toEqual([expect.objectContaining({
@@ -125,5 +124,5 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
     try { await f.app.close(); } finally { await resetDb(pool); }
   }
   expect(await migrations()).toEqual(beforeMigrations);
-  expect(beforeMigrations).toHaveLength(15);
+  expect(beforeMigrations).toHaveLength(16);
 });

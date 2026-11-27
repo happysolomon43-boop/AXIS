@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
@@ -28,6 +29,10 @@ async function ready(service, url) {
   throw new Error(`${service.label} did not become ready at ${url}`);
 }
 
+export function writeGuard(base_version, base_revision = 0) {
+  return { request_id: randomUUID(), base_version, base_revision };
+}
+
 export async function request(step, method, path, status, body, user = "usr_alice") {
   try {
     const response = await fetch(`http://localhost:4173/api${path}`, {
@@ -40,7 +45,7 @@ export async function request(step, method, path, status, body, user = "usr_alic
       signal: AbortSignal.timeout(10000),
     });
     const data = await response.json();
-    assert.equal(response.status, status, JSON.stringify(data));
+    assert.equal(response.status, status, "Unexpected HTTP status");
     console.log(`Step ${step} ${method} ${path}: ${status}`);
     return data;
   } catch (error) {

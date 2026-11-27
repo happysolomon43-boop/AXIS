@@ -160,7 +160,7 @@ test("AC3 ignores late selections, deduplicates in-flight reads and retries fail
   fireEvent.click(ui.row(1));
   expect(ui.count(versionPath(histB.id))).toBe(1);
   await act(async () => { fireEvent.click(ui.row(0)); });
-  await act(async () => { rejected.resolve(internalEnvelope); });
+  await act(async () => { rejected.resolve(reply(versionTextC)); });
   expect(ui.lines()).toEqual(["Title", "One", "Two!"]);
   expect(part(ui.row(1).parentElement!, "version-detail")).toBeNull();
   await act(async () => { fireEvent.click(ui.row(1)); });

@@ -1,3 +1,4 @@
+import { observedWriteGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -39,7 +40,7 @@ async function create(content: string) {
 
 async function write(id: string, action: "send" | "versions", content: string) {
   const response = await app.inject({
-    method: "POST", url: `/chapters/${id}/${action}`, headers: json, payload: { content },
+    method: "POST", url: `/chapters/${id}/${action}`, headers: json, payload: { content, ...await observedWriteGuard(pool, id) },
   });
   expect(response.statusCode).toBe(201);
   return response.json<VersionWritten>();

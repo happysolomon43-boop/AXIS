@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -66,7 +67,7 @@ test("AXB-0092 AC2 eligibility, released guard and replay",async()=>{
   const sent=await f.write(id,"Sent text","send");
   const imported=await f.write(id,"Imported text","versions","import");
   expect((await f.head(id,imported.version.id,"checkpoint text")).statusCode).toBe(200);
-  const restore=await f.app.inject({method:"POST",url:"/chapters/"+id+"/restore",headers:alice,payload:{version_id:sent.version.id}});
+  const restore=await f.app.inject({method:"POST",url:"/chapters/"+id+"/restore",headers:alice,payload:{request_id:randomUUID(),version_id:sent.version.id}});
   expect(restore.statusCode,restore.body).toBe(201);
   const rr=restore.json();
   const checkpointReplay=await f.name(id,rr.checkpoint_version_id);
@@ -140,7 +141,7 @@ test("AXB-0092 AC5 failed insert rolls back without logging label, later explici
   try{
     const r=await f.name(a.chapter.id,a.version.id,"private label",bad);
     expect(r.statusCode).toBe(500);expect(r.json()).toEqual({error:{code:"internal",message:"Internal error",details:null}});
-    expect(logged).not.toHaveBeenCalled();expect(await labels(pool)).toEqual([]);expect(await state(pool)).toEqual(before);
+    expect(logged).toHaveBeenCalledOnce();expect(JSON.stringify(logged.mock.calls)).not.toContain("private label");expect(await labels(pool)).toEqual([]);expect(await state(pool)).toEqual(before);
   }finally{logged.mockRestore();await bad.close();}
   expect((await f.name(a.chapter.id,a.version.id,"private label")).statusCode).toBe(201);
 });

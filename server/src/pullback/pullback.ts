@@ -1,3 +1,4 @@
+import { reportFailure } from "../logging.js";
 import type { Pool } from "pg";
 import { readActiveVersionId, readChapterRow, type ChapterRef, type ChapterRow, type SceneRow } from "../corpus/repo.js";
 import { AppError } from "../errors.js";
@@ -53,7 +54,7 @@ export async function pullBackChapter(pool: Pool, chapter: ChapterRef, actorId: 
     await client.query("COMMIT");
     return { chapter: chapterRow, active_version_id: activeVersionId };
   } catch (error) {
-    try { await client.query("ROLLBACK"); } catch { discardClient = true; }
+    try { await client.query("ROLLBACK"); } catch (rollbackError) { reportFailure("database_rollback_failed", rollbackError); discardClient = true; }
     throw error;
   } finally { client.release(discardClient); }
 }

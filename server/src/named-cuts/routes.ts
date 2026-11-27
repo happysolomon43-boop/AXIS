@@ -17,13 +17,7 @@ export function registerNamedCutRoutes(app: FastifyInstance, { pool }: Deps): vo
     const owner = requireUser(request);
     const { id } = request.params;
     if (id.length > 64 || id.includes("\u0000")) throw new AppError(404, "not_found", "Series not found");
-    try {
-      const { status, snapshot } = await nameSavedVersion(pool, owner, id, request.body);
-      return reply.header("Cache-Control", "no-store").code(status).send({ snapshot });
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      // Database errors can contain the label in their detail or query parameters.
-      throw new AppError(500, "internal", "Internal error");
-    }
+    const { status, snapshot } = await nameSavedVersion(pool, owner, id, request.body);
+    return reply.header("Cache-Control", "no-store").code(status).send({ snapshot });
   });
 }

@@ -1,10 +1,15 @@
+import { reportFailure } from "../src/logging.js";
 import { fileURLToPath } from "node:url";
 import { createPool } from "../src/db/pool.js";
 import { runMigrations } from "../src/db/migrate.js";
 
 async function migrate(): Promise<void> {
   const url = process.env.DATABASE_URL;
-  if (!url?.trim()) throw new Error("DATABASE_URL is required");
+  if (!url?.trim()) {
+    console.error("DATABASE_URL is required");
+    process.exitCode = 1;
+    return;
+  }
 
   const pool = createPool(url);
   try {
@@ -24,6 +29,6 @@ async function migrate(): Promise<void> {
 try {
   await migrate();
 } catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
+  reportFailure("migration_failed", error);
   process.exitCode = 1;
 }

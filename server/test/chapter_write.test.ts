@@ -1,3 +1,4 @@
+import { observedWriteGuard, writeGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -51,7 +52,7 @@ async function create(content: string, book = bookId) {
 }
 
 async function write(id: string, action: "versions" | "send", payload: object) {
-  const response = await post(id, action, payload);
+  const response = await post(id, action, { ...await observedWriteGuard(pool, id), ...payload });
   expect(response.statusCode, response.body).toBe(201);
   return response.json<VersionWritten>();
 }
@@ -107,7 +108,7 @@ async function hashCanonical(canonical: string) {
 test("AC1 saves versions with correct ancestry, optional hints, and unchanged activation", async () => {
   const first = await create(story);
   const result = await write(first.chapter.id, "versions", { content: "hello" });
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     chapter: first.chapter,
     version: {
       id: expect.stringMatching(/^ver_[0-9a-f]{12}$/), chapter_id: first.chapter.id,
@@ -115,7 +116,7 @@ test("AC1 saves versions with correct ancestry, optional hints, and unchanged ac
       text_hash: helloHash, hints_hash: emptyHash, l_seq: 2,
     },
     active_version_id: null,
-    sync: { state: "draft_only", same: false },
+    current: { sync: { state: "draft_only", same: false } },
   });
   expect(await read(first.chapter.id)).toMatchObject({
     version: { id: result.version.id, version_no: 2 }, blocks: [{ text: "hello" }], active_version_id: null,
@@ -148,9 +149,8 @@ test("AC1 saves versions with correct ancestry, optional hints, and unchanged ac
     expect((await write(first.chapter.id, "versions", { content: "abc", hints })).version.hints_hash).toBe(emptyHash);
   }
   const emptyChapter = await chapterOnly();
-  expect((await write(emptyChapter, "versions", { content: "x" })).version).toMatchObject({
-    version_no: 1, parent_version: null,
-  });
+  const versionless = await post(emptyChapter, "versions", { content: "x", ...writeGuard(first.version.id) });
+  expect(versionless.statusCode).toBe(400);
 });
 
 test("AC2 sends or reuploads according to the locked active state, including concurrent requests", async () => {
@@ -188,16 +188,13 @@ test("AC2 sends or reuploads according to the locked active state, including con
   const { chapter, version } = await create("abc", books[0]!.id);
   expect(version.l_seq).toBe(1);
   const simultaneous = await Promise.all(
-    Array.from({ length: 5 }, (_, i) => write(chapter.id, "send", { content: `s${i + 1}` })),
+    Array.from({ length: 5 }, (_, i) => post(chapter.id, "send", { content: `s${i + 1}`, ...writeGuard(version.id) })),
   );
-  const chronological = simultaneous.sort((a, b) => a.version.l_seq - b.version.l_seq);
-  expect(chronological.map(({ version }) => version.source)).toEqual(["send", ...Array(4).fill("reupload")]);
-  expect(chronological.map(({ version }) => version.version_no)).toEqual([2, 3, 4, 5, 6]);
-  expect(chronological.map(({ version }) => version.l_seq)).toEqual([2, 3, 4, 5, 6]);
-  expect(await activations(chapter.id)).toEqual(chronological.map(({ version }) => ({
-    version_id: version.id, since_l: version.l_seq,
-  })));
-  expect((await read(chapter.id)).active_version_id).toBe(chronological.at(-1)?.version.id);
+  expect(simultaneous.map((r) => r.statusCode).sort()).toEqual([201, 409, 409, 409, 409]);
+  const winner = simultaneous.find((r) => r.statusCode === 201)!.json<VersionWritten>();
+  expect(winner.version).toMatchObject({ source: "send", version_no: 2, l_seq: 2 });
+  expect(await activations(chapter.id)).toEqual([{ version_id: winner.version.id, since_l: 2 }]);
+  expect((await read(chapter.id)).active_version_id).toBe(winner.version.id);
 });
 
 test("AC3 activates an owned version or a null marker and makes repeated activation append-only", async () => {
@@ -256,7 +253,7 @@ test("AC4 rejects invalid requests in contract order and preserves every data ta
   };
 
   for (const action of ["versions", "send", "activate"] as const) {
-    const payload = action === "activate" ? { version_id: null } : { content: "abc" };
+    const payload = action === "activate" ? { version_id: null } : { content: "abc", ...writeGuard(first.version.id) };
     const anonymous = await post(id, action, "{bad", { "content-type": "application/json" });
     expect(anonymous.statusCode).toBe(401);
     expect(anonymous.json().error.code).toBe("auth_required");
@@ -290,7 +287,7 @@ test("AC4 rejects invalid requests in contract order and preserves every data ta
       expect(await intakeCounts(pool)).toEqual(before);
     }
     for (const content of ["a".repeat(1000001), "A\u0000B", "\ud800"]) {
-      expectFieldError(await post(id, action, { content }), "/content");
+      expectFieldError(await post(id, action, { content, ...writeGuard(first.version.id) }), "/content");
       expect(await intakeCounts(pool)).toEqual(before);
     }
     const unsupported = await post(id, action, '{"content":"abc"}', { ...alice, "content-type": "text/plain" });
@@ -299,7 +296,7 @@ test("AC4 rejects invalid requests in contract order and preserves every data ta
     expect(await intakeCounts(pool)).toEqual(before);
 
     for (const parent_version of [other.version.id, "ver_000000000000", "", "a".repeat(65), "A\u0000B"]) {
-      expectFieldError(await post(id, action, { content: "abc", parent_version }), "/parent_version");
+      expectFieldError(await post(id, action, { content: "abc", parent_version, ...writeGuard(first.version.id) }), "/parent_version");
       expect(await intakeCounts(pool)).toEqual(before);
     }
     for (const hints of [
@@ -307,10 +304,10 @@ test("AC4 rejects invalid requests in contract order and preserves every data ta
       [{ pov: "a".repeat(201) }], [{ time_mode: "sideways" }], [{ pov: "A\u0000B" }],
       [{ location: "\ud800" }], [{ time: { "\u0000": "x" } }], [{ time: { deep: ["x"] } }],
     ]) {
-      expectFieldError(await post(id, action, { content: three, hints }), "/hints");
+      expectFieldError(await post(id, action, { content: three, hints, ...writeGuard(first.version.id) }), "/hints");
       expect(await intakeCounts(pool)).toEqual(before);
     }
-    expectFieldError(await post(id, action, { content: "", hints: [null] }), "/hints");
+    expectFieldError(await post(id, action, { content: "", hints: [null], ...writeGuard(first.version.id) }), "/hints");
     expect(await intakeCounts(pool)).toEqual(before);
 
     const oversized = await post(id, action, " ".repeat(8388609));
@@ -319,7 +316,7 @@ test("AC4 rejects invalid requests in contract order and preserves every data ta
     expect(await intakeCounts(pool)).toEqual(before);
   }
   for (const source of ["bogus", "send", "reupload", "restore", "checkpoint", "bulk_replace"]) {
-    const response = await post(id, "versions", { content: "abc", source });
+    const response = await post(id, "versions", { content: "abc", source, ...writeGuard(first.version.id) });
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("validation_failed");
     expect(await intakeCounts(pool)).toEqual(before);
@@ -342,7 +339,7 @@ test("AC5 sends complete intake, large content, version-specific hints, and expl
   await write(id, "send", { content: "a".repeat(1000000) });
   expect((await read(id)).blocks).toHaveLength(1);
   const before = await intakeCounts(pool);
-  expectFieldError(await post(id, "send", { content: "a".repeat(1000001) }), "/content");
+  expectFieldError(await post(id, "send", { content: "a".repeat(1000001), ...writeGuard(sent.version.id) }), "/content");
   expect(await intakeCounts(pool)).toEqual(before);
 
   const canon = [{ pov: "Lyra", time_mode: "flashback" }, null, { location: "Harbor City", time: "March 2018" }];
@@ -364,13 +361,16 @@ test("AC5 sends complete intake, large content, version-specific hints, and expl
   await write(branched.chapter.id, "versions", { content: "x" });
   const latest = await write(branched.chapter.id, "versions", { content: "hello" });
   expect(latest.version.version_no).toBe(3);
-  const withParent = await write(branched.chapter.id, "send", {
-    content: "y", parent_version: branched.version.id,
+  const withOldParent = await post(branched.chapter.id, "send", {
+    content: "y", parent_version: branched.version.id, ...writeGuard(latest.version.id),
   });
-  expect(withParent.version).toMatchObject({ version_no: 4, parent_version: branched.version.id });
+  expect(withOldParent.statusCode).toBe(409);
+  const withParent = await write(branched.chapter.id, "send", {
+    content: "y", parent_version: latest.version.id,
+  });
+  expect(withParent.version).toMatchObject({ version_no: 4, parent_version: latest.version.id });
 
   const emptyChapter = await chapterOnly();
-  expect((await write(emptyChapter, "send", { content: "x" })).version).toMatchObject({
-    version_no: 1, parent_version: null, source: "send",
-  });
+  const versionless = await post(emptyChapter, "send", { content: "x", ...writeGuard(sent.version.id) });
+  expect(versionless.statusCode).toBe(400);
 });

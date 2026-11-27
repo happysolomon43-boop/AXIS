@@ -1,3 +1,4 @@
+import { observedWriteGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -52,7 +53,7 @@ function conflict(reason: "version" | "revision", current_version: string, curre
 async function write(action: "versions" | "send", parent_version: string) {
   const reply = await app.inject({
     method: "POST", url: `/chapters/${chapter.id}/${action}`, headers: alice,
-    payload: { content: edited, parent_version },
+    payload: { ...await observedWriteGuard(pool, chapter.id), content: edited, parent_version },
   });
   expect(reply.statusCode, reply.body).toBe(201);
   return reply.json<VersionWritten>().version.id;

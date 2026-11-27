@@ -1,3 +1,4 @@
+import { reportFailure } from "../logging.js";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Pool } from "pg";
@@ -39,7 +40,8 @@ export async function runMigrations(pool: Pool, dir: string): Promise<string[]> 
       } catch (error) {
         try {
           await client.query("ROLLBACK");
-        } catch {
+        } catch (rollbackError) {
+          reportFailure("database_rollback_failed", rollbackError);
           discardClient = true;
         }
         throw error;

@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
-import type { BlockRow, ChapterRef, ChapterRow } from "../corpus/repo.js";
+import { findOwnedChapter, readChapterDetail, readChapterRow, type BlockRow, type ChapterDetail, type ChapterRef, type ChapterRow } from "../corpus/repo.js";
+import { readOnlyTransaction, transaction } from "../db/transaction.js";
 import { AppError } from "../errors.js";
 import { readChapterSync } from "../sync/read.js";
 import type { ChapterSync } from "../sync/state.js";
@@ -10,45 +11,10 @@ export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync: 
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync: ChapterSync };
 export type DraftInput = { content: string; base_version: string; base_revision: number };
 
-const readOnly = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY";
-
-async function transaction<T>(
-  pool: Pool,
-  begin: "BEGIN" | typeof readOnly,
-  operation: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  let discardClient = false;
-  try {
-    await client.query(begin);
-    const result = await operation(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      discardClient = true;
-    }
-    throw error;
-  } finally {
-    client.release(discardClient);
-  }
-}
-
-async function readChapter(client: PoolClient, id: string): Promise<ChapterRow> {
-  const { rows: [chapter] } = await client.query<ChapterRow>(
-    "SELECT id, book_id, order_key FROM chapters WHERE id = $1",
-    [id],
-  );
-  if (!chapter) throw new AppError(404, "not_found", "Chapter not found");
-  return chapter;
-}
-
 export function putDraft(pool: Pool, chapter: ChapterRef, body: DraftInput): Promise<DraftWritten> {
   return transaction(pool, "BEGIN", async (client) => {
     await client.query("SELECT id FROM series WHERE id = $1 FOR NO KEY UPDATE", [chapter.series_id]);
-    const chapterRow = await readChapter(client, chapter.id);
+    const chapterRow = await readChapterRow(client, chapter.id);
     const { rows: [current] } = await client.query<{ id: string; revision: number }>(
       `SELECT v.id, COALESCE(d.revision, 0) AS revision
        FROM chapter_versions AS v
@@ -81,18 +47,33 @@ export function putDraft(pool: Pool, chapter: ChapterRef, body: DraftInput): Pro
   });
 }
 
-export function getDraft(pool: Pool, chapter: ChapterRef): Promise<DraftDetail> {
-  return transaction(pool, readOnly, async (client) => {
-    const chapterRow = await readChapter(client, chapter.id);
-    const { rows: [head] } = await client.query<DraftHead>(
-      `SELECT base_version, revision, content, axis_segment(content) AS blocks
-       FROM chapter_drafts WHERE chapter_id = $1`,
-      [chapter.id],
-    );
-    const sync = await readChapterSync(client, chapter.id);
-    if (!head) return { chapter: chapterRow, draft: null, sync };
+async function readDraftHead(client: PoolClient, id: string): Promise<DraftHead | null> {
+  const { rows: [head] } = await client.query<DraftHead>(
+    `SELECT base_version, revision, content, axis_segment(content) AS blocks
+     FROM chapter_drafts WHERE chapter_id = $1`,
+    [id],
+  );
+  if (!head) return null;
+  const { blocks, ...draft } = head;
+  return { ...draft, blocks: blocks.map(({ ordinal, kind, text }) => ({ ordinal, kind, text })) };
+}
 
-    const { blocks, ...draft } = head;
-    return { chapter: chapterRow, draft: { ...draft, blocks: blocks.map(({ ordinal, kind, text }) => ({ ordinal, kind, text })) }, sync };
+export function getDraft(pool: Pool, chapter: ChapterRef): Promise<DraftDetail> {
+  return transaction(pool, readOnlyTransaction, async (client) => ({
+    chapter: await readChapterRow(client, chapter.id),
+    draft: await readDraftHead(client, chapter.id),
+    sync: await readChapterSync(client, chapter.id),
+  }));
+}
+
+export type WorkingState = ChapterDetail & Pick<DraftDetail, "draft" | "sync">;
+
+export function getWorkingState(pool: Pool, owner: string, id: string): Promise<WorkingState> {
+  return transaction(pool, readOnlyTransaction, async (client) => {
+    if (!await findOwnedChapter(client, owner, id)) throw new AppError(404, "not_found", "Chapter not found");
+    const detail = await readChapterDetail(client, id);
+    const draft = await readDraftHead(client, id);
+    if (draft !== null && draft.base_version !== detail.version?.id) throw new Error("Invalid draft base");
+    return { ...detail, draft, sync: await readChapterSync(client, id) };
   });
 }

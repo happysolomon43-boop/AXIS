@@ -1,31 +1,32 @@
+import { receiptPath, receiptRoute, writeResponse, writeResult } from "./writeFixtures";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { History, type OnRestored } from "../src/history/History";
 import { reply } from "./d06.fixtures";
-import { deferred, mockApi } from "./helpers";
+import { deferred, mockApi, type Call } from "./helpers";
 import { chapterA, historyPath, versionPath, versionTextA, versionTextB, versionTextC } from "./historyFixtures";
 import {
-  historyAfterCheckpoint, historyAfterRestore, historyH3, internalEnvelope, restorePath,
+  historyAfterCheckpoint, historyH3, internalEnvelope, restorePath,
   restoreReply, restoreReplyCp, rowA, rowB, rowC,
 } from "./restoreFixtures";
 
 type Handler = Parameters<typeof mockApi>[0][number];
 const applied = "Restored into your draft. The Book is unchanged until you send.";
 const kept = "Restored as a new version. The text in your draft was not replaced.";
-const failed = "The version could not be restored.";
 
 function setup({
   post = restoreReply, history = reply(historyH3), versionB = reply(versionTextB),
-  onRestored = vi.fn<OnRestored>(() => "applied"),
+  onRestored = vi.fn<OnRestored>(() => "applied"), receipt = reply({ receipt: null }),
 }: {
-  post?: Handler["reply"]; history?: Handler["reply"]; versionB?: Handler["reply"]; onRestored?: OnRestored;
+  post?: Handler["reply"]; history?: Handler["reply"]; versionB?: Handler["reply"]; onRestored?: OnRestored; receipt?: Handler["reply"];
 } = {}) {
   const { calls } = mockApi([
     { method: "GET", path: historyPath, reply: history },
     { method: "GET", path: versionPath(rowA.id), reply: reply({ ...versionTextA, blocks: [] }) },
     { method: "GET", path: versionPath(rowB.id), reply: versionB },
     { method: "GET", path: versionPath(rowC.id), reply: reply(versionTextC) },
-    { method: "POST", path: restorePath, reply: post },
+    { method: "POST", path: restorePath, reply: async (call, n) => writeResponse(call, typeof post === "function" ? await post(call, n) : post) },
+    { method: "GET", path: receiptRoute, reply: receipt },
   ]);
   const component = (locked = false, notify = onRestored) =>
     <History chapterId={chapterA.id} timeZone="UTC" locked={locked} onRestored={notify} />;
@@ -37,7 +38,7 @@ function setup({
     await act(async () => { fireEvent.click(rows()[index]); });
   };
   return {
-    ...ui, part, rows, open, onRestored,
+    ...ui, part, rows, open, onRestored, calls,
     button: () => part("version-restore"),
     update: (locked: boolean, notify?: OnRestored) => ui.rerender(component(locked, notify)),
     posts: () => calls.filter(({ method }) => method === "POST"),
@@ -109,7 +110,7 @@ test("AC2 posts once, reports the captured outcome and preserves Restore focus",
   await act(async () => { post.resolve(restoreReply); });
   expect(ui.onRestored).toHaveBeenCalledTimes(1);
   expect(ui.onRestored).toHaveBeenCalledWith({
-    version_id: restoreReply.body.version.id, checkpoint_version_id: null,
+    version_id: restoreReply.body.version.id, checkpoint_version_id: null, draft_current: true,
   });
   const status = ui.part("restore-status");
   expect(status).toHaveAttribute("role", "status");
@@ -121,7 +122,7 @@ test("AC2 posts once, reports the captured outcome and preserves Restore focus",
   expect(ui.part("version-actions")).toHaveAttribute("data-state", "idle");
   expect(ui.button()).not.toHaveAttribute("aria-disabled");
   expect(ui.button()).toHaveFocus();
-  expect(ui.historyReads()).toBe(1);
+  expect(ui.historyReads()).toBe(2);
   ui.unmount();
 
   const keptUi = setup({ post: restoreReplyCp, onRestored: () => "kept" });
@@ -134,65 +135,63 @@ test("AC2 posts once, reports the captured outcome and preserves Restore focus",
   expect(keptUi.part("restore-status")).toBeNull();
 });
 
-test("AC3 settles a failed restore once and only offers it again after a successful read", async () => {
-  const settle = deferred<ReturnType<typeof reply>>();
-  let ui = setup({ post: internalEnvelope, history: (_, n) => n === 1 ? settle.promise : reply(historyH3) });
+test("AC3 checks one receipt after loss, leaves absence unresolved and retries only the receipt read", async () => {
+  let pressed: Call;
+  const ui = setup({
+    post: call => { pressed = call; return "network"; },
+    history: (_, n) => reply(n === 0 ? historyH3 : historyAfterCheckpoint),
+    receipt: (_, n) => {
+      const written = writeResult(pressed, restoreReplyCp.body);
+      if (n === 0) return reply({ receipt: null });
+      if (n === 1) return reply({ receipt: { ...written, request_id: "11111111-1111-4111-8111-111111111111" } });
+      return reply({ receipt: written });
+    },
+  });
   await ui.open();
   ui.button().focus();
   await act(async () => { fireEvent.click(ui.button()); });
   expect(ui.part("restore-failure")).toHaveAttribute("role", "status");
-  expect(ui.part("restore-failure").textContent).toBe(failed);
-  expect(ui.rows()).toHaveLength(3);
+  expect(ui.part("restore-failure")).toHaveTextContent("The restore could not be confirmed.");
   expect(ui.button()).toHaveAttribute("aria-disabled", "true");
   expect(ui.button()).toHaveFocus();
-  expect(ui.historyReads()).toBe(2);
+  expect(ui.historyReads()).toBe(1);
   fireEvent.click(ui.button());
   expect(ui.posts()).toHaveLength(1);
-  await act(async () => { settle.resolve(reply(historyH3)); });
-  expect(ui.button()).not.toHaveAttribute("aria-disabled");
-  expect(ui.button()).toHaveFocus();
-  expect(ui.part("restore-failure").textContent).toBe(failed);
+  await act(async () => { fireEvent.click(ui.part("restore-check-again")); });
   expect(ui.onRestored).not.toHaveBeenCalled();
-  expect(ui.posts()).toHaveLength(1);
-  await act(async () => { fireEvent.click(ui.button()); });
-  expect(ui.posts()).toHaveLength(2);
-  fireEvent.click(ui.rows()[1]);
+  expect(ui.button()).toHaveAttribute("aria-disabled", "true");
+  await act(async () => { fireEvent.click(ui.part("restore-check-again")); });
+  expect(ui.onRestored).toHaveBeenCalledTimes(1);
+  expect(ui.onRestored).toHaveBeenCalledWith({
+    version_id: restoreReplyCp.body.version.id, checkpoint_version_id: restoreReplyCp.body.checkpoint_version_id, draft_current: true,
+  });
   expect(ui.part("restore-failure")).toBeNull();
-  ui.unmount();
+  expect(ui.part("restore-status")).toHaveTextContent(`${applied} Your unsaved text was kept as the snapshot “Before restore”.`);
+  expect(ui.rows()).toHaveLength(historyAfterCheckpoint.versions.length);
+  expect(ui.posts()).toHaveLength(1);
+  expect(ui.historyReads()).toBe(2);
+  const expected = receiptPath("/api/chapters/" + chapterA.id, (pressed!.body as { request_id: string }).request_id);
+  expect(ui.calls.filter(call => receiptRoute.test(call.path)).map(call => [call.method, call.path])).toEqual(Array(3).fill(["GET", expected]));
+});
 
-  for (const [history, written] of [[historyAfterRestore, restoreReply], [historyAfterCheckpoint, restoreReplyCp]] as const) {
-    ui = setup({ post: "network", history: (_, n) => reply(n === 0 ? historyH3 : history) });
-    await ui.open();
-    await act(async () => { fireEvent.click(ui.button()); });
-    expect(ui.onRestored).toHaveBeenCalledTimes(1);
-    expect(ui.onRestored).toHaveBeenCalledWith({
-      version_id: written.body.version.id, checkpoint_version_id: written.body.checkpoint_version_id,
-    });
-    expect(ui.part("restore-failure")).toBeNull();
-    expect(ui.part("restore-status").textContent).toBe(written.body.checkpoint_version_id === null
-      ? applied
-      : `${applied} Your unsaved text was kept as the snapshot “Before restore”.`);
-    expect(ui.rows()).toHaveLength(history.versions.length);
-    expect(ui.posts()).toHaveLength(1);
-    expect(ui.historyReads()).toBe(2);
-    ui.unmount();
-  }
-
-  ui = setup({ post: internalEnvelope, history: (_, n) => n === 1 ? internalEnvelope : reply(historyH3) });
+test("an older verified Restore never borrows a later checkpoint or reloads a newer Draft", async () => {
+  let pressed: Call;
+  const ui = setup({
+    post: call => { pressed = call; return internalEnvelope; },
+    history: (_, n) => reply(n === 0 ? historyH3 : historyAfterCheckpoint),
+    receipt: () => {
+      const written = writeResult(pressed, restoreReply.body);
+      return reply({ receipt: { ...written, current: { ...written.current, version_id: restoreReplyCp.body.version.id } } });
+    },
+  });
   await ui.open();
   await act(async () => { fireEvent.click(ui.button()); });
-  expect(ui.part("refresh-failure")).toHaveTextContent("The history could not be refreshed.");
-  expect(ui.part("refresh-again")).toBeInTheDocument();
-  expect(ui.part("refresh-again").nextElementSibling).toBe(ui.part("restore-failure"));
-  expect(ui.button()).toHaveAttribute("aria-disabled", "true");
-  expect(ui.historyReads()).toBe(2);
-  fireEvent.click(ui.button());
+  expect(ui.onRestored).toHaveBeenCalledTimes(1);
+  expect(ui.onRestored).toHaveBeenCalledWith({
+    version_id: restoreReply.body.version.id, checkpoint_version_id: null, draft_current: false,
+  });
+  expect(ui.part("restore-status").textContent).toBe(kept);
   expect(ui.posts()).toHaveLength(1);
-  await act(async () => { fireEvent.click(ui.part("refresh-again")); });
-  expect(ui.historyReads()).toBe(3);
-  expect(ui.part("refresh-failure")).toBeNull();
-  expect(ui.button()).not.toHaveAttribute("aria-disabled");
-  expect(ui.part("restore-failure").textContent).toBe(failed);
 });
 
 test("AC4 uses the captured callback after a late success and skips settlement after unmount", async () => {
@@ -208,7 +207,7 @@ test("AC4 uses the captured callback after a late success and skips settlement a
     if (outcome === restoreReply) {
       expect(ui.onRestored).toHaveBeenCalledTimes(1);
       expect(ui.onRestored).toHaveBeenCalledWith({
-        version_id: restoreReply.body.version.id, checkpoint_version_id: null,
+        version_id: restoreReply.body.version.id, checkpoint_version_id: null, draft_current: true,
       });
     } else {
       expect(ui.onRestored).not.toHaveBeenCalled();
@@ -228,9 +227,9 @@ test("AC4 uses the captured callback after a late success and skips settlement a
   await act(async () => { post.resolve(restoreReply); });
   expect(ui.onRestored).toHaveBeenCalledTimes(1);
   expect(ui.onRestored).toHaveBeenCalledWith({
-    version_id: restoreReply.body.version.id, checkpoint_version_id: null,
+    version_id: restoreReply.body.version.id, checkpoint_version_id: null, draft_current: true,
   });
   expect(ui.part("restore-status").textContent).toBe(applied);
   expect(ui.button()).toHaveAttribute("aria-disabled", "true");
-  expect(ui.historyReads()).toBe(1);
+  expect(ui.historyReads()).toBe(2);
 });

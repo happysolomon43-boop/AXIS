@@ -1,4 +1,5 @@
 /// <reference lib="es2024.string" />
+import { reportFailure } from "../logging.js";
 import type { Pool, PoolClient } from "pg";
 import { findOwnedChapter, readActiveVersionId, type VersionRow } from "../corpus/repo.js";
 import { checkContent } from "../corpus/validate.js";
@@ -28,7 +29,7 @@ async function transaction<T>(pool: Pool, begin: string, run: (client: PoolClien
     await client.query("COMMIT");
     return result;
   } catch (error) {
-    try { await client.query("ROLLBACK"); } catch { discard = true; }
+    try { await client.query("ROLLBACK"); } catch (rollbackError) { reportFailure("database_rollback_failed", rollbackError); discard = true; }
     throw error;
   } finally { client.release(discard); }
 }

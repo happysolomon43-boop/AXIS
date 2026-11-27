@@ -27,11 +27,11 @@ test("AXB-0099 AC1 isolated down and up preserve named version and ledger", asyn
       await client.query(await readFile(new URL("../db/rollback/0014_snapshot_label_lifecycles.down.sql", import.meta.url), "utf8"));
       const migrations = async () => (await client.query("SELECT * FROM schema_migrations ORDER BY filename")).rows;
       const original = await migrations();
-      expect(original).toHaveLength(13);
+      expect(original).toHaveLength(14);
       expect(original[12].filename).toBe(filename);
       await client.query(down);
       expect((await client.query("SELECT to_regclass('snapshot_capture_requests') AS name")).rows).toEqual([{name:null}]);
-      expect(await migrations()).toEqual(original.slice(0,12));
+      expect(await migrations()).toEqual(original.filter(row => row.filename !== filename));
       expect((await client.query("SELECT * FROM named_cuts ORDER BY chapter_id, version_id")).rows).toEqual(named);
       expect((await client.query("SELECT * FROM chapter_versions ORDER BY id")).rows).toEqual(before.versions);
       expect((await client.query("SELECT * FROM ledger ORDER BY series_id, l_seq")).rows).toEqual(before.ledger);

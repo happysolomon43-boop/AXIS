@@ -15,9 +15,9 @@ export class ApiError extends Error {
 
 type ErrorEnvelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 
-export function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T>;
-export function request<T>(method: "GET" | "POST" | "PUT", path: string, body: unknown, expectedSuccessStatus: 200): Promise<T>;
-export async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown, expectedSuccessStatus?: 200): Promise<T> {
+export async function request<T>(
+  method: "GET" | "POST" | "PUT", path: string, body?: unknown, expectedSuccessStatus?: number | number[],
+): Promise<T> {
   const headers = { "X-Axis-User": getUserId() };
   const target = serviceTarget(readServiceOrigin(import.meta.env.VITE_AXIS_SERVICE_ORIGIN), path);
   const options: RequestInit = { ...target.options, method, headers };
@@ -35,7 +35,7 @@ export async function request<T>(method: "GET" | "POST" | "PUT", path: string, b
 
   const { status } = response;
   if (response.ok) {
-    if (expectedSuccessStatus !== undefined && status !== expectedSuccessStatus) throw new ApiError(status, "unreadable");
+    if (expectedSuccessStatus !== undefined && ![expectedSuccessStatus].flat().includes(status)) throw new ApiError(status, "unreadable");
     try {
       return await response.json() as T;
     } catch {

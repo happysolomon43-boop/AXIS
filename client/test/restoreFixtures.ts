@@ -1,4 +1,4 @@
-import type { ChapterHistory, HistoryItem, RestoreWritten } from "../src/api/types";
+import type { ChapterHistory, HistoryItem, VersionWritten } from "../src/api/types";
 import { chapterA, histA, histB, histC, internalEnvelope, versionNotFoundEnvelope } from "./historyFixtures";
 
 export { internalEnvelope, versionNotFoundEnvelope };
@@ -50,7 +50,7 @@ export const historyAfterCheckpointNamed: ChapterHistory = {
 
 function written(
   { at: _at, word_count: _count, ...version }: HistoryItem, checkpoint_version_id: string | null,
-): { status: 201; body: RestoreWritten } {
+): { status: 201; body: VersionWritten & { checkpoint_version_id: string | null } } {
   return { status: 201, body: { chapter: chapterA, version, active_version_id: rowC.id, checkpoint_version_id } };
 }
 
