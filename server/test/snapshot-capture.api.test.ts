@@ -1,3 +1,4 @@
+import { writeGuard } from "./helpers.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
 import { makePool, resetDb } from "./helpers.js";
@@ -76,7 +77,7 @@ test("AXB-0100 AC2 greatest byte-exact reuse, name conflict, different bytes and
   expect(await state(pool)).toEqual(before);
   const changed=await post(id,body(latest.version.id,"Exact  text.",1));
   expect(changed.statusCode,changed.body).toBe(201);expect(result(changed).created_version).toBe(true);
-  const hinted=await f.app.inject({method:"POST",url:"/chapters/"+id+"/versions",headers:alice,payload:{content:"Hinted text.",hints:[{pov:"Alice"}]}});
+  const hinted=await f.app.inject({method:"POST",url:"/chapters/"+id+"/versions",headers:alice,payload:{...writeGuard(result(changed).version.id),content:"Hinted text.",hints:[{pov:"Alice"}]}});
   expect(hinted.statusCode,hinted.body).toBe(201);
   const h=hinted.json().version.id;
   const exact=await post(id,body(h,"Hinted text."));

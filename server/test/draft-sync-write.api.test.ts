@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ChapterCreated, VersionWritten } from "../src/corpus/repo.js";
-import type { VersionSaved } from "../src/corpus/routes.js";
+import type { WriteResult } from "../src/writes/receipts.js";
+import { writeGuard } from "./helpers.js";
 import type { DraftDetail, DraftWritten } from "../src/drafts/repository.js";
 import * as syncReader from "../src/sync/read.js";
 import { makePool, resetDb } from "./helpers.js";
@@ -40,8 +41,8 @@ async function create() {
   return { id: chapter.id, version: version.id };
 }
 
-function write(id: string, action: "send" | "versions", content: string, parent_version: string, headers: Record<string, string> = alice) {
-  return app.inject({ method: "POST", url: path(id, action), headers, payload: { content, parent_version } });
+function write(id: string, action: "send" | "versions", content: string, parent_version: string, headers: Record<string, string> = alice, revision = 0) {
+  return app.inject({ method: "POST", url: path(id, action), headers, payload: { content, parent_version, ...writeGuard(parent_version, revision) } });
 }
 
 async function sent() {
@@ -114,14 +115,15 @@ test("AXB-0077 AC2 PUT replies agree with GET and conflicts keep the existing en
   expect(folded.json<DraftWritten>().sync).toEqual((await draft(id)).sync);
 });
 
-test("AXB-0077 AC3 only Save adds sync to its version response", async () => {
+test("AXB-0077 AC3 version receipts include a consistent current sync projection", async () => {
   const { id, version } = await sent();
   const save = async (chapterId: string, parent: string, content: string, sync: object) => {
     const reply = await write(chapterId, "versions", content, parent);
     expect(reply.statusCode).toBe(201);
-    const value = reply.json<VersionSaved>();
-    expect(Object.keys(value).sort()).toEqual(["active_version_id", "chapter", "sync", "version"]);
+    const value = reply.json<WriteResult>();
+    expect(value.operation).toBe("save");
     expect(value.sync).toEqual(sync);
+    expect(value.current).toEqual({ version_id: value.version.id, revision: 0, active_version_id: value.active_version_id, sync });
     return value;
   };
   const changed = await save(id, version, "abd", edited);
@@ -131,7 +133,7 @@ test("AXB-0077 AC3 only Save adds sync to its version response", async () => {
   const pulled = await save(id, inert, "abd", revised);
   const sentAgain = await write(id, "send", "abd", pulled.version.id);
   expect(sentAgain.statusCode).toBe(201);
-  expect(Object.keys(sentAgain.json()).sort()).toEqual(["active_version_id", "chapter", "version"]);
+  expect(sentAgain.json<WriteResult>()).toMatchObject({ operation: "send", current: { sync: inBook } });
 
   const unsent = await create();
   await save(unsent.id, unsent.version, "abd", draftOnly);
@@ -151,13 +153,13 @@ test("AXB-0077 AC4 preserves write boundaries, auth and rollback semantics", asy
   expect((await put(id, "abd", version, 0)).statusCode).toBe(200);
   expect(await intakeCounts(pool)).toEqual(before);
   read.mockRejectedValueOnce(new Error("sync read failed after Save"));
-  const committed = await write(id, "versions", "abe", version);
+  const committed = await write(id, "versions", "abe", version, alice, 1);
   expect(committed.statusCode).toBe(500);
   expect(committed.json()).toEqual(internal);
-  expect((await draft(id)).draft).toBeNull();
-  expect((await intakeCounts(pool))?.ledger).toBe(before!.ledger + 1);
+  expect((await draft(id)).draft).toMatchObject({ content: "abd", base_version: version, revision: 1 });
+  expect(await intakeCounts(pool)).toEqual(before);
   const { rows } = await pool.query("SELECT op FROM ledger ORDER BY l_seq DESC LIMIT 1");
-  expect(rows).toEqual([{ op: "chapter.version.append" }]);
+  expect(rows).toEqual([{ op: "chapter.send" }]);
 
   for (const [headers, status, error] of [
     [bob, 404, { code: "not_found", message: "Chapter not found", details: null }],

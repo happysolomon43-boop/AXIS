@@ -1,5 +1,6 @@
 import { ApiError, request } from "./http";
-import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackRequest, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import { exactObject, integer, orderedBlocks, revision, uuidV4, validChapter, validSync, validVersionRow, validWorkingState, versionId } from "./validation";
+import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackRequest, PullBackWritten, SeriesRow, SeriesTree, VersionText, WorkingState, WriteOperation, WriteRequest, WriteResult } from "./types";
 
 export function listSeries(): Promise<SeriesRow[]>;
 export function listSeries(expectedSuccessStatus: 200): Promise<SeriesRow[]>;
@@ -39,12 +40,17 @@ export function getChapter(id: string, expectedSuccessStatus?: 200): Promise<Cha
   return expectedSuccessStatus === 200 ? request("GET", path, undefined, 200) : request("GET", path);
 }
 
-export function saveVersion(chapterId: string, content: string, parentVersion: string): Promise<VersionWritten> {
-  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/versions`, { content, parent_version: parentVersion });
+export function writeChapter(chapter: string, book: string, operation: Exclude<WriteOperation, "restore">, body: WriteRequest): Promise<WriteResult> {
+  const path = operation === "save" ? "versions" : operation === "keep_mine" ? "keep-mine" : "send";
+  return postChapterWrite(chapter, path, body, { chapter, book, operation, requestId: body.request_id, parent: body.parent_version });
 }
 
-export function sendChapter(chapterId: string, content: string, parentVersion: string): Promise<VersionWritten> {
-  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/send`, { content, parent_version: parentVersion });
+export async function getWorkingState(chapter: string, book?: string): Promise<WorkingState> {
+  const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(chapter)}/working-state`, undefined, 200);
+  if (!validWorkingState(result, chapter) || (book !== undefined && result.chapter.book_id !== book)) {
+    throw new ApiError(200, "unreadable");
+  }
+  return result;
 }
 
 export function getDraft(id: string, expectedSuccessStatus?: 200): Promise<DraftDetail> {
@@ -52,22 +58,9 @@ export function getDraft(id: string, expectedSuccessStatus?: 200): Promise<Draft
   return expectedSuccessStatus === 200 ? request("GET", path, undefined, 200) : request("GET", path);
 }
 
-function exactObject(value: unknown, keys: string[]): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    && Object.keys(value).length === keys.length
-    && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
-}
-
 export async function getDraftSync(chapterId: string): Promise<ChapterSync | null> {
   const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(chapterId)}/draft?view=sync`);
-  if (!exactObject(result, ["sync"]) || !exactObject(result.sync, ["state", "same"])) return null;
-  const { state, same } = result.sync;
-  if (typeof same !== "boolean") return null;
-  if ((state === "draft_only" && !same) || (state === "in_book" && same)
-      || (state === "edited" && !same) || state === "being_revised") {
-    return { state, same };
-  }
-  return null;
+  return exactObject(result, ["sync"]) && validSync(result.sync) ? result.sync : null;
 }
 
 export function putDraft(chapterId: string, content: string, baseVersion: string, baseRevision: number): Promise<DraftWritten> {
@@ -80,12 +73,78 @@ export function getHistory(chapterId: string): Promise<ChapterHistory> {
   return request("GET", `/chapters/${encodeURIComponent(chapterId)}/history`);
 }
 
-export function getVersion(chapterId: string, versionId: string): Promise<VersionText> {
-  return request("GET", `/chapters/${encodeURIComponent(chapterId)}/versions/${encodeURIComponent(versionId)}`);
+export async function getVersion(chapter: string, id: string, book?: string): Promise<VersionText> {
+  const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(chapter)}/versions/${encodeURIComponent(id)}`, undefined, 200);
+  if (!exactObject(result, ["chapter", "version", "blocks"]) || !validChapter(result.chapter, chapter, book)
+      || !validVersionRow(result.version, chapter) || result.version.id !== id || !orderedBlocks(result.blocks)
+      || !result.blocks.every(block => exactObject(block, ["ordinal", "kind", "text"]))) {
+    throw new ApiError(200, "unreadable");
+  }
+  return { chapter: result.chapter, version: result.version, blocks: result.blocks };
 }
 
-export function restoreVersion(chapterId: string, versionId: string): Promise<RestoreWritten> {
-  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/restore`, { version_id: versionId });
+export type ExpectedWrite = {
+  chapter: string; book: string; operation: WriteOperation; requestId: string; parent?: string; source?: string;
+};
+
+function matchesWrite(value: unknown, expected: ExpectedWrite): value is WriteResult {
+  if (!exactObject(value, ["chapter", "version", "active_version_id", "request_id", "operation",
+    "source_version_id", "checkpoint_version_id", "current", ...(expected.operation === "save" ? ["sync"] : [])])) return false;
+  const { version, active_version_id, current, source_version_id, checkpoint_version_id } = value;
+  if (!validChapter(value.chapter, expected.chapter, expected.book) || !validVersionRow(version, expected.chapter)
+      || !uuidV4(value.request_id) || value.request_id !== expected.requestId || value.operation !== expected.operation
+      || !(active_version_id === null || versionId(active_version_id))
+      || !exactObject(current, ["version_id", "revision", "active_version_id", "sync"])
+      || !versionId(current.version_id) || !revision(current.revision)
+      || !(current.active_version_id === null || versionId(current.active_version_id)) || !validSync(current.sync)
+      || (current.active_version_id === null) !== (current.sync.state === "draft_only")
+      || (expected.parent !== undefined && version.parent_version !== expected.parent)) return false;
+  if (expected.operation === "restore") {
+    return version.source === "restore" && versionId(source_version_id) && source_version_id === expected.source
+      && source_version_id !== version.id && active_version_id !== version.id
+      && (checkpoint_version_id === null || (versionId(checkpoint_version_id)
+        && checkpoint_version_id !== source_version_id && checkpoint_version_id === version.parent_version));
+  }
+  if (source_version_id !== null) return false;
+  if (checkpoint_version_id !== null && (expected.operation !== "keep_mine"
+    || !versionId(checkpoint_version_id) || checkpoint_version_id === version.id
+    || checkpoint_version_id === version.parent_version || checkpoint_version_id === active_version_id)) return false;
+  if (expected.operation === "save" && (!validSync(value.sync) || value.sync.state !== current.sync.state
+      || value.sync.same !== current.sync.same)) return false;
+  return expected.operation === "send"
+    ? (version.source === "send" || version.source === "reupload") && active_version_id === version.id
+    : version.source === "draft_edit" && active_version_id !== version.id;
+}
+
+async function postChapterWrite(chapter: string, path: string, body: object, expected: ExpectedWrite): Promise<WriteResult> {
+  const result = await request<unknown>("POST", `/chapters/${encodeURIComponent(chapter)}/${path}`, body, [200, 201]);
+  if (!matchesWrite(result, expected)) throw new ApiError(201, "unreadable");
+  return result;
+}
+
+export function restoreVersion(chapter: string, book: string, source: string, requestId: string): Promise<WriteResult> {
+  return postChapterWrite(chapter, "restore", { version_id: source, request_id: requestId },
+    { chapter, book, operation: "restore", requestId, source });
+}
+
+export async function getWriteReceipt(expected: ExpectedWrite): Promise<WriteResult | null> {
+  const result = await request<unknown>("GET", `/chapters/${encodeURIComponent(expected.chapter)}/write-receipts/${encodeURIComponent(expected.requestId)}`,
+    undefined, 200);
+  if (!exactObject(result, ["receipt"])) throw new ApiError(200, "unreadable");
+  if (result.receipt === null) return null;
+  if (!matchesWrite(result.receipt, expected)) throw new ApiError(200, "unreadable");
+  return result.receipt;
+}
+
+export function isDefiniteWriteFailure(error: unknown): boolean {
+  return error instanceof ApiError && (
+    (error.status === 400 && error.code === "validation_failed")
+    || (error.status === 401 && error.code === "auth_required")
+    || (error.status === 404 && error.code === "not_found")
+    || (error.status === 409 && error.code === "write_conflict")
+    || (error.status === 413 && error.code === "payload_too_large")
+    || (error.status === 415 && error.code === "unsupported_media_type")
+  );
 }
 
 export async function pullBackChapter(chapterId: string, expectedActiveVersionId?: string): Promise<PullBackWritten> {
@@ -109,7 +168,7 @@ export function validNamedSnapshot(value: unknown, chapterId: string, versionId:
   const { chapter_id, version_id, kind, name, l_seq, pack_pins, created_at } = value;
   return chapter_id === chapterId && version_id === versionId && kind === "snapshot"
     && typeof name === "string" && name.length > 0
-    && typeof l_seq === "number" && Number.isInteger(l_seq) && l_seq > 0
+    && integer(l_seq, 1)
     && exactObject(pack_pins, []) && typeof created_at === "string"
     && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(created_at)
     && Number.isFinite(Date.parse(created_at)) && new Date(created_at).toISOString() === created_at;
@@ -123,30 +182,13 @@ export async function nameSnapshot(seriesId: string, chapterId: string, versionI
     ? result.snapshot : null;
 }
 
-const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const versionId = (v: unknown): v is string => typeof v === "string" && v.length === 16 && /^ver_[0-9a-f]{12}$/.test(v);
-const validChapterId = (v: unknown): v is string => typeof v === "string" && v.length === 15 && /^ch_[0-9a-f]{12}$/.test(v);
-const hash = (v: unknown): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]{64}$/.test(v);
-const positive = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0;
-const sources = ["draft_edit","send","reupload","restore","import","bulk_replace","checkpoint"];
-function captureVersion(value: unknown, chapterId: string): value is VersionRow {
-  if (!exactObject(value, ["id","chapter_id","version_no","source","text_hash","hints_hash","parent_version","l_seq"])) return false;
-  return versionId(value.id) && value.chapter_id === chapterId && validChapterId(value.chapter_id)
-    && positive(value.version_no) && positive(value.l_seq) && typeof value.source === "string" && sources.includes(value.source)
-    && hash(value.text_hash) && hash(value.hints_hash) && (value.parent_version === null || versionId(value.parent_version));
-}
-function validCaptureSync(value: unknown): value is ChapterSync {
-  if (!exactObject(value, ["state","same"]) || typeof value.same !== "boolean") return false;
-  return (value.state === "draft_only" && !value.same) || (value.state === "in_book" && value.same)
-    || (value.state === "edited" && !value.same) || value.state === "being_revised";
-}
 function decodeCapture(result: unknown, chapterId: string, requestId: string, base?: string): CaptureResult | null {
   if (!exactObject(result, ["capture"]) || !exactObject(result.capture, ["request_id","snapshot","version","created_version","draft_current","active_version_id","sync"])) return null;
   const c = result.capture;
-  if (c.request_id !== requestId || requestId.length !== 36 || !uuidV4.test(requestId) ||
-    !captureVersion(c.version, chapterId) || !validNamedSnapshot(c.snapshot, chapterId, c.version.id) ||
+  if (c.request_id !== requestId || !uuidV4(requestId) ||
+    !validVersionRow(c.version, chapterId) || !validNamedSnapshot(c.snapshot, chapterId, c.version.id) ||
     c.snapshot.l_seq !== c.version.l_seq || typeof c.created_version !== "boolean" || typeof c.draft_current !== "boolean" ||
-    !(c.active_version_id === null || versionId(c.active_version_id)) || !validCaptureSync(c.sync)) return null;
+    !(c.active_version_id === null || versionId(c.active_version_id)) || !validSync(c.sync)) return null;
   if (c.created_version && (c.version.source !== "draft_edit" || c.version.parent_version === null || (base !== undefined && c.version.parent_version !== base))) return null;
   return { request_id: requestId, snapshot: c.snapshot, version: c.version, created_version: c.created_version, draft_current: c.draft_current, active_version_id: c.active_version_id, sync: c.sync };
 }
@@ -161,10 +203,9 @@ export async function getSnapshotCapture(chapterId: string, requestId: string): 
   return decodeCapture(result, chapterId, requestId);
 }
 
-const validUuid = (v: unknown): v is string => typeof v === "string" && v.length === 36 && uuidV4.test(v);
 export function validSnapshotLifecycle(value: unknown): value is SnapshotLifecycle {
-  return exactObject(value,["snapshot_id","state_token","previous_token"]) && validUuid(value.snapshot_id) &&
-    validUuid(value.state_token) && (value.previous_token === null || (validUuid(value.previous_token) && value.previous_token !== value.state_token));
+  return exactObject(value,["snapshot_id","state_token","previous_token"]) && uuidV4(value.snapshot_id) &&
+    uuidV4(value.state_token) && (value.previous_token === null || (uuidV4(value.previous_token) && value.previous_token !== value.state_token));
 }
 export async function changeSnapshotLabel(chapterId:string, id:string, body:SnapshotLabelAction):Promise<SnapshotLabelResult|null> {
   const {action,snapshot_id,expected_token}=body;

@@ -1,3 +1,4 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Binder } from "../src/binder/Binder";
@@ -43,8 +44,7 @@ type Response = {status:number;body:unknown}|"network";
 async function shell(initial:ChapterSync,held?:ReturnType<typeof deferred<Response>>){
   const {calls}=mockApi([
     {method:"GET",path:chaptersPath,reply:(_,n)=>reply(list(n===0?initial:syncRevisedSame))},
-    {method:"GET",path:chapterPath,reply:reply(detailText)},
-    {method:"GET",path:draftPath,reply:withSync({status:200,body:draftNone},initial)},
+    workingRead(chapterPath, reply(detailText), withSync({status:200,body:draftNone},initial)),
     {method:"POST",path:pull,reply:postA},
     {method:"GET",path:meta,reply:()=>held!.promise},
   ]);
@@ -78,9 +78,10 @@ test("AXB-0089 AC1 hand-off draws exactly what an open draws",async()=>{
     }
     expect(document.activeElement).toBe(focused);
     expect(part(ui.draft,"toolbar").querySelector("[style]")).toBeNull();
-    expect(ui.calls.slice(start).map(c=>c.method+" "+c.path).sort()).toEqual(["POST "+pull,"GET "+chaptersPath,"GET "+meta,"GET "+chapterPath,"GET "+draftPath].sort());
-    const drawn=drawing(ui.draft,skip);ui.unmount();
-    const fresh=await shell(sync);expect(drawing(fresh.draft,skip)).toEqual(drawn);fresh.unmount();
+    expect(ui.calls.slice(start).map(c=>c.method+" "+c.path).sort()).toEqual(["POST "+pull,"GET "+chaptersPath,"GET "+meta,"GET "+workingPath(chapterPath)].sort());
+    const compare = sync === syncDraftOnly ? skip + ', [data-part="send"]' : skip;
+    const drawn=drawing(ui.draft,compare);ui.unmount();
+    const fresh=await shell(sync);expect(drawing(fresh.draft,compare)).toEqual(drawn);fresh.unmount();
   }
 });
 test("AXB-0089 AC2 failed refresh draws nothing",async()=>{

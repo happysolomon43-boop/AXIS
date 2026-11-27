@@ -1,10 +1,11 @@
+import { workingRead, writeResponse } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { expect } from "vitest";
 import type { ChapterDetail, ChapterSync } from "../src/api/types";
 import { Shell } from "../src/shell/Shell";
 import { chapterPath, detailText, reply } from "./d06.fixtures";
-import { draftNone, draftPath } from "./draftFixtures";
+import { draftNone } from "./draftFixtures";
 import { chaptersPath, mockApi } from "./helpers";
 import { historyPath, versionPath, versionTextB } from "./historyFixtures";
 import { pbList, pbTree } from "./pullbackFixtures";
@@ -39,17 +40,14 @@ export async function mountRestore({
   const pathB = "/api/chapters/" + chapterB.id;
   const { calls } = mockApi([
     { method: "GET", path: chaptersPath, reply: reply(pbList) },
-    { method: "GET", path: chapterPath, reply: (call, n) => n === 0 ? reply(detailText)
-      : typeof chapter === "function" ? chapter(call, n - 1) : chapter },
-    { method: "GET", path: draftPath, reply: (call, n) => n === 0 ? withSync({ status: 200, body: draftNone }, initialSync)
-      : typeof head === "function" ? head(call, n - 1) : head },
+    workingRead(chapterPath, (call, n) => n === 0 ? reply(detailText)
+      : typeof chapter === "function" ? chapter(call, n - 1) : chapter,
+      (call, n) => n === 0 ? withSync({ status: 200, body: draftNone }, initialSync)
+      : typeof head === "function" ? head(call, n - 1) : head),
     { method: "GET", path: historyPath, reply: (_, n) => reply(n === 0 ? historyH3 : historyAfterRestore) },
     { method: "GET", path: versionPath(rowB.id), reply: reply(versionTextB) },
-    { method: "POST", path: restorePath, reply: restore },
-    { method: "GET", path: pathB, reply: reply({
-      ...detailText, chapter: chapterB, version: { ...detailText.version!, chapter_id: chapterB.id },
-    }) },
-    { method: "GET", path: pathB + "/draft", reply: reply({ chapter: chapterB, draft: null }) },
+    { method: "POST", path: restorePath, reply: async (call, n) => writeResponse(call, typeof restore === "function" ? await restore(call, n) : restore) },
+    workingRead(pathB, reply({ ...detailText, chapter: chapterB, version: { ...detailText.version!, chapter_id: chapterB.id } })),
     { method: "GET", path: pathB + "/history", reply: reply({ chapter: chapterB, versions: [], active_version_id: null }) },
   ]);
   const ui = render(createElement(Shell, { tree: pbTree }));

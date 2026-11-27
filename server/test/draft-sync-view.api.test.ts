@@ -1,3 +1,4 @@
+import { writeGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
@@ -25,7 +26,7 @@ async function create(sent = false) {
   const { chapter, version } = created.json<ChapterCreated>();
   if (!sent) return { id: chapter.id, version: version.id };
   const result = await app.inject({ method: "POST", url: "/chapters/" + chapter.id + "/send", headers: alice,
-    payload: { content: "abc", parent_version: version.id } });
+    payload: { content: "abc", parent_version: version.id, ...writeGuard(version.id) } });
   expect(result.statusCode).toBe(201);
   return { id: chapter.id, version: result.json<VersionWritten>().version.id };
 }

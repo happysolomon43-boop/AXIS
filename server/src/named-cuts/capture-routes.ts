@@ -8,10 +8,6 @@ const path = "/chapters/:id(^[\\s\\S]{1,100}$)/snapshots";
 function guard(id: string) {
   if (id.length > 64 || id.includes("\u0000")) throw new AppError(404, "not_found", "Chapter not found");
 }
-function redact(error: unknown): never {
-  if (error instanceof AppError) throw error;
-  throw new AppError(500, "internal", "Internal error");
-}
 export function registerSnapshotCaptureRoutes(app: FastifyInstance, { pool }: Deps): void {
   app.post<{ Params: { id: string }; Body: CaptureRequest }>(path, {
     bodyLimit: 8388608,
@@ -28,18 +24,14 @@ export function registerSnapshotCaptureRoutes(app: FastifyInstance, { pool }: De
     const actor = requireUser(request);
     const { id } = request.params;
     guard(id);
-    try {
-      const { status, capture } = await captureChapterSnapshot(pool, actor, id, request.body);
-      return reply.header("Cache-Control", "no-store").code(status).send({ capture });
-    } catch (error) { redact(error); }
+    const { status, capture } = await captureChapterSnapshot(pool, actor, id, request.body);
+    return reply.header("Cache-Control", "no-store").code(status).send({ capture });
   });
   app.get<{ Params: { id: string; requestId: string } }>(path + "/:requestId(^[\\s\\S]{1,100}$)", async (request, reply) => {
     const actor = requireUser(request);
     const { id, requestId } = request.params;
     guard(id);
-    try {
-      const capture = await readSnapshotCapture(pool, actor, id, requestId);
-      return reply.header("Cache-Control", "no-store").send({ capture });
-    } catch (error) { redact(error); }
+    const capture = await readSnapshotCapture(pool, actor, id, requestId);
+    return reply.header("Cache-Control", "no-store").send({ capture });
   });
 }

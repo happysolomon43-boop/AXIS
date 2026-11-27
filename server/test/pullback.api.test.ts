@@ -1,3 +1,4 @@
+import { writeGuard } from "./helpers.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -43,7 +44,7 @@ async function create() {
 }
 
 async function send(id: string, content: string, parent_version: string) {
-  const reply = await app.inject({ method: "POST", url: `/chapters/${id}/send`, headers: alice, payload: { content, parent_version } });
+  const reply = await app.inject({ method: "POST", url: `/chapters/${id}/send`, headers: alice, payload: { content, parent_version, ...writeGuard(parent_version) } });
   expect(reply.statusCode).toBe(201);
   return reply.json<VersionWritten>();
 }
@@ -83,7 +84,7 @@ test("AC1 applies, rolls back and reapplies migration 0011 and constrains the ma
     "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'chapter_pullbacks'::regclass AND contype = 'p'",
   );
   expect(key).toEqual({ definition: "PRIMARY KEY (chapter_id)" });
-  expect((await migrationRows()).rows).toHaveLength(15);
+  expect((await migrationRows()).rows).toHaveLength(16);
   const first = await create();
   const second = await create();
   await pool.query("INSERT INTO chapter_pullbacks VALUES ($1, $2)", [first.chapter.id, first.version.id]);
@@ -92,11 +93,11 @@ test("AC1 applies, rolls back and reapplies migration 0011 and constrains the ma
   try {
     expect((await table()).rows).toEqual([{ name: null }]);
     const { rows } = await migrationRows();
-    expect(rows).toHaveLength(14);
+    expect(rows).toHaveLength(15);
     expect(rows).not.toContainEqual({ filename: migration });
     await expect(runMigrations(pool, migrationDir)).resolves.toEqual([migration]);
     expect((await table()).rows).toEqual([{ name: "chapter_pullbacks" }]);
-    expect((await migrationRows()).rows).toHaveLength(15);
+    expect((await migrationRows()).rows).toHaveLength(16);
     expect(await marks()).toEqual([]);
     await expect(pool.query("INSERT INTO chapter_pullbacks VALUES ($1, $2)", [first.chapter.id, second.version.id]))
       .rejects.toMatchObject({ code: "23503" });
@@ -195,7 +196,7 @@ test("AXB-0129 AC1 preserves an inert version, hints and every active coordinate
   expect((await pool.query("SELECT pov_hint,location_hint,time_hint,time_mode FROM scenes WHERE version_id=$1",[after.latest.id])).rows).toEqual([{pov_hint:"Mara",location_hint:null,time_hint:null,time_mode:"linear"}]);
   const history=await app.inject({method:"GET",url:"/chapters/"+A+"/history",headers:owner});
   expect(history.statusCode).toBe(200);expect(history.json()).toMatchObject({active_version_id:V,versions:[{id:after.latest.id,source:"draft_edit",snapshot:null,can_name_snapshot:false},{id:V}]});
-  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows[0].count).toBe(15);
+  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows[0].count).toBe(16);
 });
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return {resolve,promise};}
 async function ordered(first:()=>PromiseLike<unknown>,second:()=>PromiseLike<unknown>){

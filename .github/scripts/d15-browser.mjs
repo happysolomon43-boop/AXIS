@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {pathToFileURL} from "node:url";
-import {request,withPreview} from "./preview-smoke.mjs";
+import {request,withPreview,writeGuard} from "./preview-smoke.mjs";
 const {chromium}=await import(pathToFileURL(process.env.AXIS_BROWSER_MODULE).href);
 const part=(p,n)=>p.locator('[data-part="'+n+'"]');
 const computed=(l,p)=>l.evaluate((e,k)=>getComputedStyle(e).getPropertyValue(k),p);
@@ -12,8 +12,8 @@ await withPreview(async()=>{
  const tree=await request(1,"POST","/series",201,{title:"D15 lifecycle acceptance"});
  const first=await request(2,"POST","/books/"+tree.books[0].id+"/chapters",201,{content:"The gate shut."});
  const path="/chapters/"+first.chapter.id;
- await request(3,"POST",path+"/send",201,{content:"The gate shut."});
- const b=await request(4,"POST",path+"/versions",201,{content:"The bell rang."});
+ const sent=await request(3,"POST",path+"/send",201,{content:"The gate shut.",...writeGuard(first.version.id)});
+ const b=await request(4,"POST",path+"/versions",201,{content:"The bell rang.",...writeGuard(sent.version.id)});
  const long="W".repeat(199)+"😀";
  const saved=await request(5,"POST","/series/"+tree.series.id+"/named-cuts",201,{kind:"snapshot",chapter_id:first.chapter.id,version_id:b.version.id,name:long});
  const browser=await chromium.launch({headless:true,...(process.env.AXIS_BROWSER_EXECUTABLE?{executablePath:process.env.AXIS_BROWSER_EXECUTABLE}:{})});

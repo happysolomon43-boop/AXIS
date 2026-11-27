@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { request, withPreview } from "./preview-smoke.mjs";
+import { request, withPreview, writeGuard } from "./preview-smoke.mjs";
 
 await withPreview(async () => {
   const series = await request(1, "POST", "/series", 201, { title: "Ashfall" });
@@ -22,7 +22,7 @@ await withPreview(async () => {
     code: "conflict", message: "Draft is out of date",
     details: { reason: "revision", current_version: v1, current_revision: 1 },
   }, "Step 6 revision conflict");
-  const saved = await request(7, "POST", `${path}/versions`, 201, { content: input.content, parent_version: v1 });
+  const saved = await request(7, "POST", `${path}/versions`, 201, { content: input.content, parent_version: v1, ...writeGuard(v1, 1) });
   assert.equal(saved.version?.version_no, 2, "Step 7 version number");
   assert.equal((await request(8, "GET", draftPath, 200)).draft, null, "Step 8 cleared head");
   const stale = await request(9, "PUT", draftPath, 409, input);

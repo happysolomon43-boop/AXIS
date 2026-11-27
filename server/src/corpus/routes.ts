@@ -3,14 +3,15 @@ import type { Pool } from "pg";
 import type { Deps } from "../app.js";
 import { requireUser } from "../auth.js";
 import { AppError } from "../errors.js";
-import { readChapterSync } from "../sync/read.js";
-import type { ChapterSync } from "../sync/state.js";
+import { uuidPattern } from "../named-cuts/capture.js";
+import { writeChapter, type ChapterWriteBody } from "../writes/ordinary.js";
+import { getWriteReceipt } from "../writes/receipts.js";
 import {
-  activateVersion, appendVersion, createChapterWithFirstVersion, findOwnedBook,
-  findOwnedChapter, getChapterDetail, getChapterHistory, listBookChapters, sendChapter,
-  type BookChapters, type VersionWritten,
+  activateVersion, createChapterWithFirstVersion, findOwnedBook,
+  findOwnedChapter, getChapterDetail, getChapterHistory, listBookChapters,
+  type BookChapters,
 } from "./repo.js";
-import { checkContent, checkHintsText, invalidParentVersion } from "./validate.js";
+import { checkContent } from "./validate.js";
 
 type CreateChapterBody = { content: string; source?: "draft_edit" | "import" };
 
@@ -18,15 +19,15 @@ type CreateChapterBody = { content: string; source?: "draft_edit" | "import" };
 const bookChaptersPath = "/books/:id(^[\\s\\S]{1,100}$)/chapters";
 const chapterPath = "/chapters/:id(^[\\s\\S]{1,100}$)";
 type ChapterParams = { id: string };
-type ChapterVersionBody = { content: string; parent_version?: string; hints?: unknown[] | null };
-export type VersionSaved = VersionWritten & { sync: ChapterSync };
-
 const chapterWriteBody = {
   type: "object",
-  required: ["content"],
+  required: ["content", "request_id", "base_version", "base_revision"],
   additionalProperties: false,
   properties: {
     content: { type: "string" },
+    request_id: { type: "string", pattern: uuidPattern, minLength: 36, maxLength: 36 },
+    base_version: { type: "string", minLength: 1, maxLength: 64 },
+    base_revision: { type: "integer", minimum: 0, maximum: 2147483647 },
     parent_version: { type: "string" },
     hints: { type: ["array", "null"] },
   },
@@ -45,14 +46,6 @@ async function requireOwnedChapter(pool: Pool, ownerId: string, id: string) {
   const chapter = await findOwnedChapter(pool, ownerId, id);
   if (!chapter) throw chapterNotFound();
   return chapter;
-}
-
-function checkVersionBody({ content, hints, parent_version }: ChapterVersionBody): void {
-  checkContent(content);
-  checkHintsText(hints);
-  if (parent_version !== undefined && (parent_version === "" || isMalformedId(parent_version))) {
-    throw invalidParentVersion();
-  }
 }
 
 function bookNotFound(): AppError {
@@ -101,40 +94,33 @@ export function registerCorpusRoutes(app: FastifyInstance, { pool }: Deps): void
     return detail;
   });
 
-  app.post<{ Params: ChapterParams; Body: ChapterVersionBody & { source?: "draft_edit" | "import" } }>(
-    chapterPath + "/versions",
-    {
-      bodyLimit: 8388608,
-      schema: {
-        body: {
-          ...chapterWriteBody,
-          properties: {
-            ...chapterWriteBody.properties,
-            source: { type: "string", enum: ["draft_edit", "import"] },
-          },
-        },
+  for (const [path, operation] of [["versions", "save"], ["send", "send"], ["keep-mine", "keep_mine"]] as const) {
+    const properties = {
+      ...chapterWriteBody.properties,
+      ...(operation === "save" ? { source: { type: "string", enum: ["draft_edit", "import"] } } : {}),
+    };
+    app.post<{ Params: ChapterParams; Body: ChapterWriteBody }>(
+      chapterPath + "/" + path,
+      {
+        bodyLimit: 8388608,
+        schema: { body: { ...chapterWriteBody, properties,
+          required: operation === "keep_mine" ? [...chapterWriteBody.required, "parent_version"] : chapterWriteBody.required } },
       },
-    },
-    async (request, reply) => {
-      const ownerId = requireUser(request);
-      const chapter = await requireOwnedChapter(pool, ownerId, request.params.id);
-      checkVersionBody(request.body);
-      const { source = "draft_edit", ...input } = request.body;
-      const result = await appendVersion(pool, ownerId, chapter, { ...input, source });
-      const sync = await readChapterSync(pool, chapter.id);
-      const saved: VersionSaved = { ...result, sync };
-      return reply.code(201).send(saved);
-    },
-  );
+      async (request, reply) => {
+        const ownerId = requireUser(request);
+        const chapter = await requireOwnedChapter(pool, ownerId, request.params.id);
+        const { status, result } = await writeChapter(pool, ownerId, chapter, operation, request.body);
+        return reply.header("Cache-Control", "no-store").code(status).send(result);
+      },
+    );
+  }
 
-  app.post<{ Params: ChapterParams; Body: ChapterVersionBody }>(
-    chapterPath + "/send",
-    { bodyLimit: 8388608, schema: { body: chapterWriteBody } },
+  app.get<{ Params: ChapterParams & { requestId: string } }>(
+    chapterPath + "/write-receipts/:requestId(^[\\s\\S]{1,100}$)",
     async (request, reply) => {
-      const ownerId = requireUser(request);
-      const chapter = await requireOwnedChapter(pool, ownerId, request.params.id);
-      checkVersionBody(request.body);
-      return reply.code(201).send(await sendChapter(pool, ownerId, chapter, request.body));
+      const { id, requestId } = request.params;
+      const receipt = await getWriteReceipt(pool, requireUser(request), id, requestId);
+      return reply.header("Cache-Control", "no-store").send({ receipt });
     },
   );
 

@@ -1,3 +1,4 @@
+import { observedWriteGuard } from "./helpers.js";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { expect } from "vitest";
@@ -17,7 +18,7 @@ export async function fixture(pool: Pool) {
   };
   const write = async (chapter: string, content: string, action: "versions" | "send" = "versions", source?: "import") => {
     const res = await app.inject({ method: "POST", url: "/chapters/" + chapter + "/" + action, headers: alice,
-      payload: { content, ...(source ? { source } : {}) } });
+      payload: { content, ...await observedWriteGuard(pool, chapter), ...(source ? { source } : {}) } });
     expect(res.statusCode, res.body).toBe(201);
     return res.json<VersionWritten>();
   };

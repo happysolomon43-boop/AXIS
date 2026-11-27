@@ -1,3 +1,4 @@
+import { workingRead, writeResponse } from "./writeFixtures";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { EditorView } from "prosemirror-view";
@@ -7,7 +8,7 @@ import draftSource from "../src/draft/Draft.tsx?raw";
 import binderSyncCss from "../src/styles/binder-sync.css?raw";
 import { deferred, internalError, mockApi } from "./helpers";
 import { c, chapterA, chapterPath, detailText, reply, writtenC } from "./d06.fixtures";
-import { advance, contrast as draftContrast, draftNone, edit, fakeClock, mountDraft, noDraftRead, putOk } from "./draftFixtures";
+import { advance, contrast as draftContrast, draftNone, edit, fakeClock, mountDraft, putOk } from "./draftFixtures";
 import { internalEnvelope } from "./historyFixtures";
 import {
   detailAfterRestore, mountRestore, restoredText, syncDraftOnly, syncEdited, syncInBook,
@@ -32,12 +33,13 @@ function contrast(a: string, b: string) {
   return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
 }
 
+const validationError = reply({ error: { code: "validation_failed", message: "Invalid" } }, 400);
+
 test("AXB-0040 AC5 draws the sticky head, actions and exact failure banner, with design contrasts", async () => {
   const pending = deferred<ReturnType<typeof reply>>();
   mockApi([
-    noDraftRead,
-    { method: "GET", path: chapterPath, reply: () => pending.promise },
-    { method: "POST", path: `${chapterPath}/send`, reply: reply(writtenC(c), 201) },
+    workingRead(chapterPath, () => pending.promise),
+    { method: "POST", path: `${chapterPath}/send`, reply: (call) => writeResponse(call, reply(writtenC(c), 201)) },
   ]);
   let m = mount();
   expect(m.root).toHaveClass("ax-draft");
@@ -58,15 +60,20 @@ test("AXB-0040 AC5 draws the sticky head, actions and exact failure banner, with
   fireEvent.click(m.part("send")); await waitFor(() => expect(m.part("status")).toHaveAttribute("data-outcome", "sent")); assertHead(false); expect(m.part("send")).toHaveClass("ax-button--secondary"); cleanup();
   for (const state of ["write-failed", "check-failed"] as const) {
     mockApi([
-      noDraftRead,
-      { method: "GET", path: chapterPath, reply: (_, n) => n === 1 && state === "check-failed" ? internalError : reply(detailText) },
-      { method: "POST", path: `${chapterPath}/versions`, reply: internalError },
+      workingRead(chapterPath, (_, n) => n === 1 && state === "check-failed" ? internalError : reply(detailText)),
+      { method: "POST", path: `${chapterPath}/versions`, reply: state === "write-failed" ? validationError : internalError },
     ]);
     m = mount(); await waitFor(() => expect(m.root).toHaveAttribute("data-state", "clean")); m.edit(); fireEvent.click(m.part("save"));
     await waitFor(() => expect(m.root).toHaveAttribute("data-state", state)); assertHead(true);
     expect(m.part("write-failure")).toHaveClass("ax-banner");
-    expect(m.part("write-failure").firstElementChild).toBe(m.part("not-saved-mark"));
-    expect(m.part("not-saved-mark")).toHaveClass("ax-banner__mark"); expect(m.part("not-saved-mark")).toHaveTextContent("Not saved");
+    if (state === "write-failed") {
+      expect(m.part("write-failure").firstElementChild).toBe(m.part("not-saved-mark"));
+      expect(m.part("not-saved-mark")).toHaveClass("ax-banner__mark");
+      expect(m.part("not-saved-mark")).toHaveTextContent("Not saved");
+    } else {
+      expect(m.part("not-saved-mark")).toBeNull();
+      expect(m.part("write-failure")).toHaveTextContent("The write could not be confirmed.");
+    }
     expect(m.part("copy-chapter")).toHaveClass("ax-button--secondary");
     if (state === "check-failed") expect(m.part("check-again")).toHaveClass("ax-button--secondary"); cleanup();
   }

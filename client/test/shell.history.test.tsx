@@ -1,9 +1,10 @@
+import { workingRead, writeResponse } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { Shell } from "../src/shell/Shell";
 import { chapterList, chapterPath, detailText, fourRows, reply, writtenC } from "./d06.fixtures";
-import { advance, draftNone, draftPath, edit, fakeClock, putOk } from "./draftFixtures";
+import { advance, draftNone, edit, fakeClock, putOk } from "./draftFixtures";
 import { chaptersPath, deferred, mockApi, treeA } from "./helpers";
 import { historyPath, historyThree, historyTwo } from "./historyFixtures";
 
@@ -28,8 +29,7 @@ function mount({ secondChapter = false, history = reply(historyTwo), extra = [] 
   captured.view = null;
   const { calls } = mockApi([
     { method: "GET", path: chaptersPath, reply: chapterList(fourRows.slice(0, secondChapter ? 2 : 1)) },
-    { method: "GET", path: chapterPath, reply: reply(detailText) },
-    { method: "GET", path: draftPath, reply: reply(draftNone) },
+    workingRead(chapterPath, reply(detailText), reply(draftNone)),
     { method: "GET", path: historyPath, reply: history },
     ...extra,
   ]);
@@ -117,11 +117,10 @@ test("AC3 preserves the Drawer on chapter switches and refreshes only after a ve
   const pathB = "/api/chapters/ch_00000000000b";
   const historyB = `${pathB}/history`;
   const ui = mount({ secondChapter: true, extra: [
-    { method: "GET", path: pathB, reply: reply(detailText) },
-    { method: "GET", path: `${pathB}/draft`, reply: reply(draftNone) },
+    workingRead(pathB, reply({ ...detailText, chapter: { ...detailText.chapter, id: "ch_00000000000b" }, version: { ...detailText.version!, chapter_id: "ch_00000000000b" } })),
     { method: "GET", path: historyB, reply: (_, n) => reply((() => { const h=n===0?historyTwo:historyThree;return {...h,chapter:{...h.chapter,id:"ch_00000000000b"},versions:h.versions.map(v=>({...v,chapter_id:"ch_00000000000b"}))}; })()) },
-    { method: "PUT", path: `${pathB}/draft`, reply: reply(putOk(1)) },
-    { method: "POST", path: `${pathB}/versions`, reply: reply(writtenC(null), 201) },
+    { method: "PUT", path: `${pathB}/draft`, reply: reply({ ...putOk(1), chapter: { ...detailText.chapter, id: "ch_00000000000b" } }) },
+    { method: "POST", path: `${pathB}/versions`, reply: (call) => writeResponse(call, reply({ ...writtenC(null), chapter: { ...detailText.chapter, id: "ch_00000000000b" }, version: { ...writtenC(null).version, chapter_id: "ch_00000000000b" } }, 201)) },
   ] });
   await ui.open();
   fireEvent.click(ui.door());

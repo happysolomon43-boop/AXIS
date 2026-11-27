@@ -6,25 +6,28 @@ import "../styles/draft-snapshot.css";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Node } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
-import { captureSnapshot, getSnapshotCapture, getChapter, getDraft, getDraftSync, putDraft, saveVersion, sendChapter } from "../api/endpoints";
+import { captureSnapshot, getSnapshotCapture, getWorkingState, getDraftSync, getWriteReceipt, isDefiniteWriteFailure, putDraft, writeChapter } from "../api/endpoints";
 import { ApiError } from "../api/http";
-import type { CaptureRequest, CaptureResult, ChapterDetail, ChapterSync, DraftDetail } from "../api/types";
+import type { CaptureRequest, CaptureResult, ChapterSync, WorkingState, WriteOperation, WriteRequest, WriteResult } from "../api/types";
 import { syncChip } from "../binder/format";
 import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
 import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, type EditorBlock } from "../editor/model";
 import { fireAt } from "./autosave";
-import { validChapterBase, validDraftBase } from "./pullBackBase";
+import { revision as validRevision, versionId } from "../api/validation";
 
 type Props = {
   chapterId: string;
   reloadToken?: number;
+  restoredVersionId?: string;
+  onDocumentChange?: () => void;
   syncRefreshToken?: number;
   onLockChange: (locked: boolean) => void;
   onWritten: () => void;
   onEditorReady?: (view: EditorView) => void;
 };
-type Write = { kind: "save" | "send"; content: string; parent: string; doc: Node };
+type Write = { kind: Exclude<WriteOperation, "restore">; doc: Node; request: WriteRequest; book: string };
+type Coordinates = Pick<WriteRequest, "base_version" | "base_revision">;
 type Phase = "saving" | "sending" | "checking" | "write-failed" | "check-failed" | "reloading";
 type Ready = {
   state: "ready";
@@ -35,6 +38,9 @@ type Ready = {
   capturing: boolean;
   doc: Node;
   loadedVersionId: string;
+  bookId: string;
+  conflictBase: Coordinates | null;
+  competingDraft: boolean;
   activeVersionId: string | null;
   sync: ChapterSync | undefined;
   phase: Phase | null;
@@ -76,9 +82,21 @@ function locked(s: Snapshot) {
 function busy(s: Ready) {
   return s.capturing || s.phase === "saving" || s.phase === "sending" || s.phase === "checking" || s.phase === "reloading";
 }
-function keepMineActive(s: Ready) { return s.stopped && !busy(s) && dirty(s); }
+function conflictBase(error: unknown): Coordinates | null {
+  if (!(error instanceof ApiError) || error.status !== 409 || error.code !== "conflict") return null;
+  const details = detailsObject(error.details);
+  if ((details?.reason !== "version" && details?.reason !== "revision") ||
+      !versionId(details.current_version) || !validRevision(details.current_revision)) return null;
+  return { base_version: details.current_version, base_revision: details.current_revision };
+}
+function writeBase(result: WriteResult): Coordinates {
+  return { base_version: result.current.version_id, base_revision: result.current.revision };
+}
+function keepMineActive(s: Ready) {
+  return s.stopped && (s.phase === null || s.phase === "write-failed") && !s.capturing && !s.competingDraft && dirty(s);
+}
 function active(s: Ready, kind: Write["kind"]) {
-  return !busy(s) && s.phase !== "check-failed" && (dirty(s) || (kind === "send" && s.activeVersionId !== s.loadedVersionId));
+  return !s.stopped && !busy(s) && s.phase !== "check-failed" && (dirty(s) || (kind === "send" && s.activeVersionId !== s.loadedVersionId));
 }
 
 function autosaveStatus(s: Ready) {
@@ -88,8 +106,9 @@ function autosaveStatus(s: Ready) {
   return dirty(s) && kept(s) ? "saved" : "idle";
 }
 
-function fromRead(detail: ChapterDetail, { draft, sync }: DraftDetail): Ready {
-  if (detail.version === null || (draft !== null && draft.base_version !== detail.version.id)) {
+function fromRead(detail: WorkingState): Ready {
+  const { draft, sync } = detail;
+  if (detail.version === null) {
     throw new Error("Draft and chapter versions do not match");
   }
   const served = blocksFromServed(detail.blocks);
@@ -98,6 +117,7 @@ function fromRead(detail: ChapterDetail, { draft, sync }: DraftDetail): Ready {
   const doc = draft === null ? baselineDoc : blocksToDoc(blocks);
   return {
     state: "ready", blocks, baselineDoc, doc, loadedVersionId: detail.version.id,
+    bookId: detail.chapter.book_id, conflictBase: null, competingDraft: false,
     baselineRaw: detail.version.content, persistedRaw: draft?.content ?? null, capturing: false,
     activeVersionId: detail.active_version_id, sync, phase: null, write: null, outcome: null,
     headRevision: draft?.revision ?? 0, persistedDoc: draft === null ? null : doc,
@@ -107,7 +127,7 @@ function fromRead(detail: ChapterDetail, { draft, sync }: DraftDetail): Ready {
   };
 }
 
-export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLockChange, onWritten, onEditorReady }: Props) {
+export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefreshToken = 0, onLockChange, onWritten, onEditorReady, onDocumentChange }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ state: "loading" });
   const current = useRef(snapshot);
   const [captureUI, setCaptureUI] = useState<CaptureUI>(initialCapture);
@@ -120,8 +140,11 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const snapshotCheck = useRef<HTMLButtonElement>(null);
   const snapshotReturn = useRef<HTMLButtonElement>(null);
   const reloadButton = useRef<HTMLButtonElement>(null);
+  const writeCheckButton = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const sendButton = useRef<HTMLButtonElement>(null);
   const inputId = useId();
-  const focusRequest = useRef<{ previous: Element | null; target: "input" | "snapshot" | "check" | "reload" } | null>(null);
+  const focusRequest = useRef<{ previous: Element | null; target: "input" | "snapshot" | "check" | "reload" | "save" | "send" } | null>(null);
   function changeCapture(next: CaptureUI) {
     captureCurrent.current = next;
     setCaptureUI(next);
@@ -139,7 +162,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     if (!move || !mounted.current) return;
     if (document.activeElement !== move.previous && document.activeElement !== document.body) return;
     const target = move.target === "input" ? snapshotName.current : move.target === "check" ? snapshotCheck.current :
-      move.target === "reload" ? reloadButton.current : snapshotButton.current ?? reloadButton.current;
+      move.target === "reload" ? reloadButton.current : move.target === "save" ? saveButton.current :
+      move.target === "send" ? sendButton.current : snapshotButton.current ?? reloadButton.current;
     target?.focus();
   });
 
@@ -161,7 +185,9 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const refocus = useRef(false);
   const focusOnReady = useRef(true);
   const lastReloadToken = useRef(reloadToken);
-  const pendingAutosave = useRef<Promise<void> | null>(null);
+  const failedKind = useRef<Write["kind"]>("save");
+  const checkingWriteAgain = useRef(false);
+  const pendingAutosave = useRef<Promise<boolean> | null>(null);
 
   const update = useCallback((next: Snapshot) => {
     if (!mounted.current) return;
@@ -197,14 +223,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     setCaptureUI(initialCapture);
     update({ state: "loading" });
     try {
-      const detail = await getChapter(chapterId);
-      if (!isCurrent(number)) return;
-      if (detail.version === null) {
-        update({ state: "failed" });
-        return;
-      }
-      const head = await getDraft(chapterId);
-      if (isCurrent(number)) update(fromRead(detail, head));
+      const detail = await getWorkingState(chapterId);
+      if (isCurrent(number)) update(fromRead(detail));
     } catch {
       if (isCurrent(number)) update({ state: "failed" });
     } finally {
@@ -237,6 +257,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
       return;
     }
 
+    const book = snapshot.bookId;
     const number = generation.current;
     const timer = window.setTimeout(() => {
       if (!isCurrent(number) || ordinarySnapshot.current !== snapshot || current.current.state !== "ready") return;
@@ -250,47 +271,54 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
       pendingAutosave.current = saveDraft().finally(end);
       async function saveDraft() {
         let revision: number | null = null;
-        let stopped = false;
-        let syncReply: Pick<DraftDetail, "sync"> | undefined;
+        let conflict: Coordinates | null = null;
+        let stale = false;
+        let syncReply: ChapterSync | undefined;
         try {
           const result = await putDraft(chapterId, content, baseVersion, baseRevision);
-          revision = result.revision;
-          syncReply = result;
+          if (result.chapter?.id === chapterId && result.chapter.book_id === book &&
+              result.base_version === baseVersion && result.revision === baseRevision + 1 && validRevision(result.revision)) {
+            revision = result.revision;
+            syncReply = result.sync;
+          }
         } catch (error) {
-          if (!isCurrent(number)) return;
+          if (!isCurrent(number)) return false;
           if (error instanceof ApiError && error.code === "conflict") {
+            stale = true;
+            conflict = conflictBase(error);
             try {
-              const head = await getDraft(chapterId);
-              syncReply = head;
+              const head = await getWorkingState(chapterId, book);
+              syncReply = head.sync;
               const { draft } = head;
+              if (head.version) conflict = { base_version: head.version.id, base_revision: draft?.revision ?? 0 };
               if (draft !== null && draft.content === content && draft.base_version === baseVersion) {
                 revision = draft.revision;
               }
             } catch {
               // A failed adoption read leaves the conflict unresolved.
             }
-            stopped = revision === null;
           }
         }
 
         const s = current.current;
-        if (!isCurrent(number) || s.state !== "ready") return;
+        if (!isCurrent(number) || s.state !== "ready") return false;
         pendingAutosave.current = null;
         const now = Date.now();
         // Check again may have found a landed write while this request was in flight.
         if (s.loadedVersionId !== baseVersion) {
           update({ ...s, autosaveInFlight: false });
-          return;
+          return false;
         }
-        const settled = { ...s, autosaveInFlight: false, sync: syncReply ? syncReply.sync : s.sync };
+        const settled = { ...s, autosaveInFlight: false, sync: syncReply ?? s.sync };
         if (revision !== null) {
           const saved = { ...settled, headRevision: revision, persistedDoc: docSent, persistedRaw: content, failedAt: null };
           update(due(saved) ? { ...saved, dirtySince: now } : saved);
-        } else if (stopped) {
-          update({ ...settled, stopped: true, persistedDoc: null, persistedRaw: null });
+        } else if (stale) {
+          update({ ...settled, stopped: true, conflictBase: conflict, persistedDoc: null, persistedRaw: null });
         } else {
           update({ ...settled, failedAt: now });
         }
+        return revision !== null && !stale;
       }
     }, Math.max(0, fireAt(snapshot) - Date.now()));
 
@@ -309,66 +337,116 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     const view = editor.current;
     if (view) {
       view.setProps({ editable: () => true });
-      if (refocus.current) view.focus();
+      if (refocus.current && (document.activeElement === document.body || view.hasFocus())) view.focus();
     }
     refocus.current = false;
   }
 
-  function settle(number: number, write: Write, loadedVersionId: string, activeVersionId: string | null, sync?: ChapterSync) {
-    if (!mounted.current || number !== generation.current || current.current.state !== "ready") return;
-    update({
-      ...current.current, loadedVersionId, activeVersionId, sync, baselineDoc: write.doc, baselineRaw: write.content, phase: null,
-      write: null, outcome: write.kind === "save" ? "saved" : "sent",
-      headRevision: 0, persistedDoc: null, persistedRaw: null, stopped: false, reloadFailed: false, failedAt: null, lastPutStartAt: null,
-    });
+  function settle(number: number, write: Write, result: WriteResult) {
+    if (!isCurrent(number) || current.current.state !== "ready") return;
+    const s = current.current;
+    const outcome = write.kind === "send" ? "sent" : "saved";
+    const live = result.current;
+    const matches = live.version_id === result.version.id && live.revision === 0;
+    const previous = document.activeElement;
+    if (previous === writeCheckButton.current) {
+      focusRequest.current = { previous, target: matches ? (write.kind === "send" ? "send" : "save") : "reload" };
+    }
+    update(matches ? {
+      ...s, loadedVersionId: result.version.id, activeVersionId: live.active_version_id, sync: live.sync,
+      baselineDoc: write.doc, baselineRaw: write.request.content, phase: null, write: null, outcome,
+      headRevision: 0, persistedDoc: null, persistedRaw: null, stopped: false, conflictBase: null,
+      competingDraft: false, reloadFailed: false, failedAt: null, lastPutStartAt: null,
+    } : { ...s, phase: null, write: null, outcome, stopped: true, conflictBase: writeBase(result),
+      competingDraft: false, persistedDoc: null, persistedRaw: null });
     finishBusy();
-    if (mounted.current && number === generation.current) callbacks.current.onWritten();
+    if (isCurrent(number)) callbacks.current.onWritten();
   }
 
   async function check(number: number, write: Write) {
-    if (!mounted.current || number !== generation.current || current.current.state !== "ready") return;
+    if (!isCurrent(number) || current.current.state !== "ready") return;
     update({ ...current.current, phase: "checking", write });
+    let result: WriteResult | null = null;
     try {
-      const detail = await getChapter(chapterId);
-      if (!mounted.current || number !== generation.current || current.current.state !== "ready") return;
-      const version = detail.version;
-      if (version !== null && version.id !== write.parent && version.content === write.content
-          && (write.kind === "save" || detail.active_version_id === version.id)) {
-        settle(number, write, version.id, detail.active_version_id);
-      } else {
-        update({ ...current.current, phase: "write-failed" });
-        finishBusy();
-      }
-    } catch {
-      if (mounted.current && number === generation.current && current.current.state === "ready") {
-        update({ ...current.current, phase: "check-failed" });
-        finishBusy();
-      }
+      result = await getWriteReceipt({ chapter: chapterId, book: write.book, operation: write.kind,
+        requestId: write.request.request_id, parent: write.request.parent_version });
+    } catch { /* The attempted write remains unconfirmed. */ }
+    if (!isCurrent(number) || current.current.state !== "ready") return;
+    if (result) settle(number, write, result);
+    else {
+      update({ ...current.current, phase: "check-failed" });
+      finishBusy();
     }
   }
 
-  async function start(kind: Write["kind"], keepMine = false) {
+  async function start(kind: Write["kind"]) {
     const s = current.current;
-    if (!mounted.current || s.state !== "ready") return;
-    if (!(keepMine ? keepMineActive(s) : active(s, kind))) return;
+    const keepMine = kind === "keep_mine";
+    if (!mounted.current || s.state !== "ready" || !(keepMine ? keepMineActive(s) : active(s, kind))) return;
     changeCapture(initialCapture);
-    const write: Write = { kind, doc: s.doc, content: serializeBlocks(docToBlocks(s.doc)), parent: s.loadedVersionId };
+    failedKind.current = kind;
+    const doc = s.doc;
+    const content = serializeBlocks(docToBlocks(doc));
     const number = generation.current;
     const end = beginOrdinary();
     try {
-      beginBusy(s, kind === "save" ? "saving" : "sending", write);
-      if (pendingAutosave.current !== null) {
-        await pendingAutosave.current;
-        if (!isCurrent(number)) return;
-      }
-      let response;
-      try {
-        response = await (kind === "save" ? saveVersion : sendChapter)(chapterId, write.content, write.parent);
-      } catch {
-        await check(number, write);
+      beginBusy(s, kind === "send" ? "sending" : "saving", null);
+      const pending = pendingAutosave.current;
+      const autosaved = pending === null || await pending;
+      if (!isCurrent(number) || current.current.state !== "ready") return;
+      const latest = current.current;
+      if (!keepMine && (!autosaved || latest.stopped)) {
+        update({ ...latest, phase: latest.stopped ? null : "write-failed" });
+        finishBusy();
         return;
       }
-      settle(number, write, response.version.id, response.active_version_id, kind === "save" ? response.sync : undefined);
+      if (keepMine && latest.conflictBase === null) {
+        // Establish the coordinates first. The next explicit choice can use them.
+        try {
+          const result = await getWorkingState(chapterId, latest.bookId);
+          if (isCurrent(number) && result.version && current.current.state === "ready") {
+            update({ ...current.current, phase: null,
+              conflictBase: { base_version: result.version.id, base_revision: result.draft?.revision ?? 0 } });
+          }
+        } catch { /* Reload and clipboard remain available. */ }
+        if (isCurrent(number) && current.current.state === "ready") {
+          update({ ...current.current, phase: null });
+          finishBusy();
+        }
+        return;
+      }
+      const base = keepMine ? latest.conflictBase! : {
+        base_version: latest.loadedVersionId, base_revision: latest.headRevision,
+      };
+      let requestId: string;
+      try { requestId = globalThis.crypto.randomUUID(); }
+      catch {
+        update({ ...latest, phase: "write-failed" });
+        finishBusy();
+        return;
+      }
+      const request = { ...base, request_id: requestId, parent_version: s.loadedVersionId, content };
+      const write = { kind, doc, request, book: s.bookId };
+      update({ ...latest, write });
+      let result: WriteResult;
+      try {
+        result = await writeChapter(chapterId, s.bookId, kind, request);
+      } catch (error) {
+        if (!isCurrent(number) || current.current.state !== "ready") return;
+        const live = current.current;
+        if (error instanceof ApiError && error.status === 409 && error.code === "conflict") {
+          update({ ...live, phase: null, write: null, stopped: true, conflictBase: conflictBase(error),
+            competingDraft: false, persistedDoc: null, persistedRaw: null });
+          finishBusy();
+        } else if (isDefiniteWriteFailure(error)) {
+          const competingDraft = error instanceof ApiError && error.code === "write_conflict"
+            && detailsObject(error.details)?.reason === "draft_preserved";
+          update({ ...live, phase: competingDraft ? null : "write-failed", competingDraft });
+          finishBusy();
+        } else await check(number, write);
+        return;
+      }
+      settle(number, write, result);
     } finally {
       end();
     }
@@ -380,8 +458,9 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     changeCapture(initialCapture);
     const number = generation.current;
     const end = beginOrdinary();
+    checkingWriteAgain.current = true;
     beginBusy(s, "checking", s.write);
-    void check(number, s.write).finally(end);
+    void check(number, s.write).finally(() => { checkingWriteAgain.current = false; end(); });
   }
 
   async function reloadLatest(inPlace = false) {
@@ -397,11 +476,12 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     const number = ++generation.current;
     beginBusy({ ...s, reloadFailed: false }, "reloading", s.write, !inPlace);
     try {
-      const detail = await getChapter(chapterId);
+      const detail = await getWorkingState(chapterId, s.bookId);
       if (!isCurrent(number)) return;
-      const head = await getDraft(chapterId);
-      if (!isCurrent(number)) return;
-      const next = fromRead(detail, head);
+      if (inPlace && restoredVersionId !== undefined && (detail.version?.id !== restoredVersionId || detail.draft !== null)) {
+        throw new Error("Restored Draft has advanced");
+      }
+      const next = fromRead(detail);
       refocus.current = false;
       focusOnReady.current = !inPlace;
       const ui = captureCurrent.current;
@@ -478,18 +558,17 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         !live.stopped && !live.capturing && !live.autosaveInFlight &&
         (live.persistedDoc && live.doc.eq(live.persistedDoc) && live.persistedRaw !== null ? live.persistedRaw : live.baselineRaw) === raw;
     };
+    const book = s.bookId;
     async function verifyBase() {
       try {
-        const detail = await getChapter(chapterId, 200);
-        if (!currentAttempt() || !validChapterBase(detail,chapterId) || detail.version === null || detail.version.content !== raw) return;
-        const head = await getDraft(chapterId, 200);
-        if (!currentAttempt() || !validDraftBase(head,chapterId) || head.chapter.book_id !== detail.chapter.book_id ||
-            (head.draft !== null && (head.draft.base_version !== detail.version.id || head.draft.content !== raw))) return;
+        const detail = await getWorkingState(chapterId, book);
+        if (!currentAttempt() || detail.version === null || detail.version.content !== raw ||
+            (detail.draft !== null && detail.draft.content !== raw)) return;
         const live = current.current;
         if (live.state !== "ready") return;
-        const next = {...live, loadedVersionId:detail.version.id, activeVersionId:detail.active_version_id,
-          headRevision:head.draft?.revision??0, baselineRaw:raw,
-          persistedDoc:head.draft===null?null:live.doc, persistedRaw:head.draft===null?null:raw};
+        const next = { ...live, loadedVersionId: detail.version.id, activeVersionId: detail.active_version_id,
+          headRevision: detail.draft?.revision ?? 0, baselineRaw: raw,
+          persistedDoc: detail.draft === null ? null : live.doc, persistedRaw: detail.draft === null ? null : raw };
         // No Editor reconstruction, focus operation, timer reset, chip update or notice.
         current.current = next;
         ordinarySnapshot.current = next;
@@ -648,6 +727,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     baseGeneration.current++;
     const s = current.current;
     if (s.state !== "ready" || busy(s)) return;
+    onDocumentChange?.();
     const now = Date.now();
     const next = { ...s, doc, lastChangeAt: now, outcome: null };
     update(!due(s) && due(next) ? { ...next, dirtySince: now } : next);
@@ -711,13 +791,14 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const checkingManually=ui.phase === "manual";
   const recovery=ui.phase === "unknown" || checkingManually;
   const state = s.phase ?? (s.stopped ? "conflict" : dirty(s) ? "unsaved" : "clean");
-  const showConflict = s.stopped && (!isBusy || s.phase === "reloading");
+  const showConflict = s.stopped && (s.phase === null || s.phase === "reloading" || s.phase === "write-failed");
   const autosave = autosaveStatus(s);
   const saveActive = active(s, "save");
   const sendActive = active(s, "send");
   const chip = syncChip({ version_id: s.loadedVersionId, active_version_id: s.activeVersionId, sync: s.sync });
-  const failure = s.phase === "write-failed" || s.phase === "check-failed";
-  const outcome = state === "clean" ? s.outcome : null;
+  const recoveryWrite = s.phase === "check-failed" || (s.phase === "checking" && s.write !== null && checkingWriteAgain.current);
+  const failure = s.phase === "write-failed" || recoveryWrite;
+  const outcome = state === "clean" || state === "conflict" ? s.outcome : null;
   const status = state === "unsaved" && (dirty(s) && !kept(s)) ? copy["draft.unsaved"] : state === "saving" ? copy["draft.saving"]
     : state === "sending" ? copy["draft.sending"] : state === "checking" ? copy["draft.checking"]
     : state === "reloading" && s.stopped ? copy["draft.reloading"] : outcome === "saved" ? copy["draft.saved"] : outcome === "sent" ? copy["draft.sent"] : "";
@@ -733,9 +814,9 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
           </span>
           {s.phase === null && !s.stopped && <button ref={snapshotButton} className="ax-button ax-button--quiet ax-draft__snapshot" type="button" data-part="snapshot" aria-disabled={!snapshotActive}
             onClick={openSnapshot}><span>{copy["draft.snapshot.action"]}</span></button>}
-          <button type="button" className="ax-button ax-button--secondary" data-part="save" aria-disabled={!saveActive}
+          <button type="button" ref={saveButton} className="ax-button ax-button--secondary" data-part="save" aria-disabled={!saveActive}
             onClick={() => { void start("save"); }}>{copy["draft.save"]}</button>
-          <button type="button" className={`ax-button ax-button--${sendActive ? "primary" : "secondary"}`} data-part="send"
+          <button type="button" ref={sendButton} className={`ax-button ax-button--${sendActive ? "primary" : "secondary"}`} data-part="send"
             aria-disabled={!sendActive} onClick={() => { void start("send"); }}>{copy["draft.send"]}</button>
         </div>
         {ui.form && <form ref={snapshotForm} className="ax-draft__snapshot-form" data-part="snapshot-form" onSubmit={event => { event.preventDefault(); void startSnapshot(true); }}
@@ -755,23 +836,23 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
         </form>}
         <p className="ax-draft-status" role="status" data-part="status" data-outcome={outcome ?? undefined}>{status}</p>
         {showConflict && <div className="ax-banner" role="alert" data-part="conflict">
-          {!ui.conflict && <p className="ax-banner__lead">{copy["draft.conflict"]}</p>}
+          {!ui.conflict && <p className="ax-banner__lead">{copy[s.competingDraft ? "draft.competingDraft" : "draft.conflict"]}</p>}
           <button type="button" className="ax-button ax-button--secondary" ref={reloadButton} data-part="reload-latest" aria-disabled={isBusy}
             onClick={() => { void reloadLatest(); }}>{copy["draft.reloadLatest"]}</button>
           <button type="button" className="ax-button ax-button--secondary" data-part="keep-mine" aria-disabled={!keepMineActive(s)}
-            onClick={() => { void start("save", true); }}>{copy["draft.keepMine"]}</button>
+            onClick={() => { void start("keep_mine"); }}>{copy["draft.keepMine"]}</button>
           <button type="button" className="ax-button ax-button--secondary" data-part="conflict-copy"
             onClick={() => { void copyChapter(); }}>{copy["draft.copyChapter"]}</button>
           {s.reloadFailed && <p className="ax-banner__note" role="alert" data-part="reload-failure">{copy["draft.reloadFailed"]}</p>}
         </div>}
         {failure && <div className="ax-banner" role="alert" data-part="write-failure">
-          <span className="ax-banner__mark" data-part="not-saved-mark">{copy["draft.notSaved"]}</span>
-          <p>{s.write?.kind === "save" ? copy["draft.saveFailed"] : copy["draft.sendFailed"]}</p>
+          {!recoveryWrite && <span className="ax-banner__mark" data-part="not-saved-mark">{copy["draft.notSaved"]}</span>}
+          <p>{copy[recoveryWrite ? "draft.writeUnconfirmed" : s.write?.kind === "send" || failedKind.current === "send" ? "draft.sendFailed" : "draft.saveFailed"]}</p>
           {!kept(s) && <p data-part="only-here">{copy["draft.onlyHere"]}</p>}
           <button type="button" className="ax-button ax-button--secondary" data-part="copy-chapter"
             onClick={() => { void copyChapter(); }}>{copy["draft.copyChapter"]}</button>
-          {s.phase === "check-failed" && <button type="button" className="ax-button ax-button--secondary" data-part="check-again"
-            onClick={checkAgain}>{copy["draft.checkAgain"]}</button>}
+          {recoveryWrite && <button type="button" className="ax-button ax-button--secondary" data-part="check-again" ref={writeCheckButton}
+            aria-disabled={s.phase === "checking"} onClick={checkAgain}>{copy["draft.checkAgain"]}</button>}
         </div>}
         <div className="ax-draft__snapshot-feedback">
           <p className="ax-draft__snapshot-status" role="status" aria-live="polite" aria-atomic="true" data-part="snapshot-status">{ui.status}</p>

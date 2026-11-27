@@ -6,7 +6,7 @@ import { findOwnedChapter } from "../corpus/repo.js";
 import { checkContent } from "../corpus/validate.js";
 import { AppError } from "../errors.js";
 import { readChapterSync } from "../sync/read.js";
-import { getDraft, putDraft, type DraftInput } from "./repository.js";
+import { getDraft, getWorkingState, putDraft, type DraftInput } from "./repository.js";
 
 const draftPath = "/chapters/:id(^[\\s\\S]{1,100}$)/draft";
 type Params = { id: string };
@@ -41,6 +41,13 @@ export function registerDraftRoutes(app: FastifyInstance, { pool }: Deps): void 
       return putDraft(pool, chapter, request.body);
     },
   );
+
+  app.get<{ Params: Params }>("/chapters/:id(^[\\s\\S]{1,100}$)/working-state", async (request, reply) => {
+    const owner = requireUser(request);
+    const { id } = request.params;
+    if (id.length > 64 || id.includes("\u0000")) throw new AppError(404, "not_found", "Chapter not found");
+    return reply.header("Cache-Control", "no-store").send(await getWorkingState(pool, owner, id));
+  });
 
   app.get<{ Params: Params }>(draftPath, async (request, reply) => {
     const chapter = await ownedChapter(pool, requireUser(request), request.params.id);

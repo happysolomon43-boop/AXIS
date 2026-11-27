@@ -1,6 +1,8 @@
+import { reportFailure } from "../logging.js";
 import type { Pool, PoolClient } from "pg";
 import type { SnapshotLifecycle } from "../named-cuts/label-lifecycle.js";
 import type { NamedSnapshot } from "../named-cuts/repository.js";
+import { readOnlyTransaction, transaction as corpusTransaction } from "../db/transaction.js";
 import { AppError } from "../errors.js";
 import { computeSync, type ChapterSync } from "../sync/state.js";
 import { invalidHints, invalidParentVersion } from "./validate.js";
@@ -107,7 +109,8 @@ export async function createChapterWithFirstVersion(
   } catch (error) {
     try {
       await client.query("ROLLBACK");
-    } catch {
+    } catch (rollbackError) {
+      reportFailure("database_rollback_failed", rollbackError);
       discardClient = true;
     }
     throw error;
@@ -128,12 +131,6 @@ export type ActivationWritten = {
   chapter: ChapterRow;
   active_version_id: string | null;
   l_seq: number;
-};
-
-type ChapterVersionInput = {
-  content: string;
-  parent_version?: string;
-  hints?: unknown[] | null;
 };
 
 export async function findOwnedChapter(
@@ -168,7 +165,7 @@ export async function readActiveVersionId(client: PoolClient, chapterId: string)
   return active?.version_id ?? null;
 }
 
-async function readChapterDetail(client: PoolClient, chapterId: string): Promise<ChapterDetail> {
+export async function readChapterDetail(client: PoolClient, chapterId: string): Promise<ChapterDetail> {
   const chapter = await readChapterRow(client, chapterId);
   const { rows: [latest] } = await client.query<Omit<VersionDetail, "l_seq"> & { l_seq: string }>(
     `SELECT id, chapter_id, version_no, source, text_hash, hints_hash, parent_version, l_seq, content
@@ -212,33 +209,7 @@ export async function getChapterDetail(
   });
 }
 
-const readOnlyTransaction = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY";
-
-async function corpusTransaction<T>(
-  pool: Pool,
-  begin: "BEGIN" | typeof readOnlyTransaction,
-  operation: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  let discardClient = false;
-  try {
-    await client.query(begin);
-    const result = await operation(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      discardClient = true;
-    }
-    throw error;
-  } finally {
-    client.release(discardClient);
-  }
-}
-
-async function chapterHasVersion(client: PoolClient, chapterId: string, versionId: string): Promise<boolean> {
+export async function chapterHasVersion(client: PoolClient, chapterId: string, versionId: string): Promise<boolean> {
   const { rows } = await client.query(
     "SELECT id FROM chapter_versions WHERE id = $1 AND chapter_id = $2",
     [versionId, chapterId],
@@ -246,11 +217,11 @@ async function chapterHasVersion(client: PoolClient, chapterId: string, versionI
   return rows.length > 0;
 }
 
-async function commitChapterRow(
+export async function commitChapterRow(
   client: PoolClient,
   actorId: string,
   chapter: ChapterRef,
-  op: "chapter.version.append" | "chapter.send" | "chapter.activate",
+  op: "chapter.version.append" | "chapter.send" | "chapter.activate" | "chapter.keep_mine.checkpoint",
   row: object,
 ): Promise<{ l_seq: number; ids: string[] }> {
   try {
@@ -269,77 +240,14 @@ async function commitChapterRow(
   }
 }
 
-function isNestedHint(hint: unknown): boolean {
-  return Array.isArray(hint) || (
-    hint !== null && typeof hint === "object" &&
-    Object.values(hint).some((field) => field !== null && typeof field === "object")
-  );
-}
-
-async function writeVersion(
-  client: PoolClient,
-  actorId: string,
-  chapter: ChapterRef,
-  input: ChapterVersionInput,
-  source: "draft_edit" | "import" | "send" | "reupload",
-): Promise<VersionWritten> {
-  if (input.parent_version !== undefined && !await chapterHasVersion(client, chapter.id, input.parent_version)) {
-    throw invalidParentVersion();
-  }
-  // Valid hints contain only scalar fields. Reject deeper shapes before JSONB parsing.
-  if (input.hints?.some(isNestedHint)) throw invalidHints();
-
-  const send = source === "send" || source === "reupload";
-  const row = {
-    kind: "chapter_version",
-    chapter_id: chapter.id,
-    content: input.content,
-    source,
-    parent_version: input.parent_version,
-    hints: input.hints,
-    ...(send ? { activate: true } : {}),
-  };
-  const { ids: [versionId] } = await commitChapterRow(
-    client, actorId, chapter, send ? "chapter.send" : "chapter.version.append", row,
-  );
-  if (!versionId) throw new Error("Chapter commit returned no version ID");
-
+export async function readVersionRow(client: PoolClient, versionId: string): Promise<VersionRow> {
   const { rows: [version] } = await client.query<Omit<VersionRow, "l_seq"> & { l_seq: string }>(
     `SELECT id, chapter_id, version_no, source, text_hash, hints_hash, parent_version, l_seq
      FROM chapter_versions WHERE id = $1`,
     [versionId],
   );
   if (!version) throw new Error("Chapter commit returned a missing version");
-
-  return {
-    chapter: await readChapterRow(client, chapter.id),
-    version: { ...version, version_no: Number(version.version_no), l_seq: Number(version.l_seq) },
-    active_version_id: await readActiveVersionId(client, chapter.id),
-  };
-}
-
-export function appendVersion(
-  pool: Pool,
-  actorId: string,
-  chapter: ChapterRef,
-  input: ChapterVersionInput & { source: "draft_edit" | "import" },
-): Promise<VersionWritten> {
-  return corpusTransaction(pool, "BEGIN", (client) =>
-    writeVersion(client, actorId, chapter, input, input.source),
-  );
-}
-
-export function sendChapter(
-  pool: Pool,
-  actorId: string,
-  chapter: ChapterRef,
-  input: ChapterVersionInput,
-): Promise<VersionWritten> {
-  return corpusTransaction(pool, "BEGIN", async (client) => {
-    await client.query("SELECT id FROM series WHERE id = $1 FOR NO KEY UPDATE", [chapter.series_id]);
-    const source = (await readActiveVersionId(client, chapter.id)) === null ? "send" : "reupload";
-    return writeVersion(client, actorId, chapter, input, source);
-  });
+  return { ...version, l_seq: Number(version.l_seq) };
 }
 
 export function activateVersion(

@@ -1,3 +1,4 @@
+import { reportFailure } from "../logging.js";
 import type { Pool } from "pg";
 
 export type SeriesRow = {
@@ -39,7 +40,8 @@ export async function listSeries(pool: Pool, ownerId: string): Promise<SeriesRow
   } catch (error) {
     try {
       await client.query("ROLLBACK");
-    } catch {
+    } catch (rollbackError) {
+      reportFailure("database_rollback_failed", rollbackError);
       discardClient = true;
     }
     throw error;
@@ -77,7 +79,8 @@ export async function createSeriesWithFirstBook(
   } catch (error) {
     try {
       await client.query("ROLLBACK");
-    } catch {
+    } catch (rollbackError) {
+      reportFailure("database_rollback_failed", rollbackError);
       discardClient = true;
     }
     throw error;

@@ -6,6 +6,7 @@ export type ErrorCode =
   | "unsupported_media_type"
   | "conflict"
   | "snapshot_conflict"
+  | "write_conflict"
   | "not_in_book"
   | "pull_back_conflict"
   | "internal";

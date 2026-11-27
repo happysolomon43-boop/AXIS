@@ -34,5 +34,5 @@ test("AXB-0096 AC2 lost naming reply, later Send and head, explicit replay",asyn
     expect(await state(pool)).toEqual(after);
   }finally{await f.app.close();await resetDb(pool);}
   expect(await labels(pool)).toEqual([]);
-  expect((await pool.query("SELECT filename FROM schema_migrations")).rowCount).toBe(15);
+  expect((await pool.query("SELECT filename FROM schema_migrations")).rowCount).toBe(16);
 });

@@ -1,3 +1,4 @@
+import { writeGuard } from "./preview-smoke.mjs";
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -20,7 +21,7 @@ async function api(method, path, status, body) {
     ...(body===undefined ? {} : {body: JSON.stringify(body)}), signal: AbortSignal.timeout(10000)
   });
   const data=await response.json();
-  assert.equal(response.status,status,method+' '+path+' '+JSON.stringify(data));
+  assert.equal(response.status,status,method+' '+path);
   console.log(method,path,status);
   return data;
 }
@@ -39,15 +40,22 @@ try {
   assert.equal(detail.version.id,v1); assert.equal(detail.version.content,'');
   assert.deepEqual(detail.blocks,[]); assert.equal(detail.active_version_id,null);
   const content='# Title\n\nHello';
-  const saved=await api('POST',path+'/versions',201,{content,parent_version:v1});
+  const saved=await api('POST',path+'/versions',201,{content,parent_version:v1,...writeGuard(v1)});
   assert.equal(saved.version.version_no,2); assert.equal(saved.version.source,'draft_edit');
   assert.equal(saved.active_version_id,null);
   detail=await api('GET',path,200);
   assert.equal(detail.version.content,content);
   assert.deepEqual(detail.blocks.map(({kind,text})=>({kind,text})),[{kind:'heading',text:'Title'},{kind:'paragraph',text:'Hello'}]);
-  const sent=await api('POST',path+'/send',201,{content,parent_version:saved.version.id});
+  const sent=await api('POST',path+'/send',201,{content,parent_version:saved.version.id,...writeGuard(saved.version.id)});
   assert.equal(sent.version.version_no,3); assert.equal(sent.version.source,'send');
   assert.equal(sent.active_version_id,sent.version.id);
+  const settled=await api('GET',path+'/write-receipts/'+saved.request_id,200);
+  assert.equal(settled.receipt.version.id,saved.version.id);
+  assert.equal(settled.receipt.active_version_id,null);
+  assert.equal(settled.receipt.current.active_version_id,sent.version.id);
+  const working=await api('GET',path+'/working-state',200);
+  assert.equal(working.version.id,sent.version.id);
+  assert.equal(working.draft,null);
   const list=await api('GET','/books/'+book+'/chapters',200);
   assert.equal(list.chapters.length,1);
   assert.equal(list.chapters[0].title,'Title'); assert.equal(list.chapters[0].word_count,2);

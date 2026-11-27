@@ -3,23 +3,22 @@ import "./restore.css";
 import "./snapshots.css";
 import "./snapshot-lifecycle.css";
 import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { getHistory, getVersion, restoreVersion, nameSnapshot, validNamedSnapshot, changeSnapshotLabel, validSnapshotLifecycle } from "../api/endpoints";
-import type { ChapterHistory, HistoryItem, NamedSnapshot, VersionText, SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult } from "../api/types";
+import { getHistory, getVersion, getWriteReceipt, isDefiniteWriteFailure, restoreVersion, nameSnapshot, validNamedSnapshot, changeSnapshotLabel, validSnapshotLifecycle } from "../api/endpoints";
+import type { ChapterHistory, HistoryItem, NamedSnapshot, VersionText, SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, WriteResult } from "../api/types";
 import { ApiError } from "../api/http";
 import { copy } from "../copy";
 import { formatVersionDate, previewBlocks, sourceWord, wordsLabel } from "./historyFormat";
 
-export type RestoreOutcome = { version_id: string; checkpoint_version_id: string | null };
+export type RestoreOutcome = { version_id: string; checkpoint_version_id: string | null; draft_current: boolean };
 export type OnRestored = (outcome: RestoreOutcome) => "applied" | "kept";
 
 type Props = {
-  chapterId: string; seriesId?: string; refreshToken?: number; timeZone?: string; locked?: boolean; onRestored?: OnRestored;
+  chapterId: string; seriesId?: string; refreshToken?: number; timeZone?: string; locked?: boolean; onRestored?: OnRestored; onRestoreStart?: () => OnRestored; pendingRestores?: Map<string, RestoreAttempt>;
 };
 type List = { state: "loading" | "failed" } | { state: "ready"; history: ChapterHistory; refreshFailed: boolean };
 type Selection = { id: string; state: "loading" | "failed" } | { id: string; state: "ready"; text: VersionText };
-type RestoreOperation =
-  | { state: "restoring"; id: string }
-  | { state: "settling"; knownIds: Set<string>; textHash: string; notify: OnRestored };
+export type RestoreAttempt = { id: string; requestId: string; book: string; notify: OnRestored; disposition?: ReturnType<OnRestored> };
+type RestoreOperation = { state: "restoring" | "checking" | "unconfirmed"; attempt: RestoreAttempt };
 type RestoreResult = { part: "restore-status" | "restore-failure"; message: string };
 
 type Naming = {
@@ -145,7 +144,7 @@ function VersionEntry({ item, timeZone, inBook, selection, onOpen, onRetry, acti
 export function History(props:Props) {
   return <MountedHistory key={props.chapterId} {...props}/>;
 }
-function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locked = false, onRestored = keepDraft }: Props) {
+function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locked = false, onRestored = keepDraft, onRestoreStart, pendingRestores }: Props) {
   const initialChapter = useRef(chapterId).current;
   const root = useRef<HTMLElement>(null);
   const [list, setList] = useState<List>({ state: "loading" });
@@ -163,7 +162,10 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
   function labelBlocked(){return labelRef.current.phase!=="idle";}
   function labelPending(){return labelRef.current.phase==="mutating"||labelRef.current.phase==="checking";}
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [restore, setRestore] = useState<RestoreOperation | null>(null);
+  const [restore, setRestore] = useState<RestoreOperation | null>(() => {
+    const attempt = pendingRestores?.get(chapterId);
+    return attempt ? { state: "unconfirmed", attempt } : null;
+  });
   const [result, setResult] = useState<RestoreResult | null>(null);
   const [filter, setFilter] = useState<"named" | "all">("all");
   const filterRef=useRef(filter);
@@ -215,7 +217,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
       (row?.querySelector<HTMLElement>('[data-part="version-open"]') ?? root.current)?.focus();
     }
   }, [naming]);
-  const operation = useRef<RestoreOperation | null>(null);
+  const operation = useRef(restore);
   const latestHistoryRead = useRef(0);
   const versionGeneration = useRef(0);
   const cache = useRef(new Map<string, VersionText>());
@@ -343,17 +345,6 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     const undo=currentUndo(history,labelRef.current.undo);
     if(undo!==labelRef.current.undo){rememberFocus("version-open",labelRef.current.undo?.original.version_id);changeLabel({...labelRef.current,undo});}
 
-    const settling = operation.current;
-    if (settling?.state === "settling") {
-      changeRestore(null);
-      const added = history.versions.filter(({ id }) => !settling.knownIds.has(id));
-      const landed = added.find(({ source, text_hash }) => source === "restore" && text_hash === settling.textHash);
-      if (landed) {
-        const checkpointId = added.find(({ source }) => source === "checkpoint")?.id ?? null;
-        const disposition = settling.notify({ version_id: landed.id, checkpoint_version_id: checkpointId });
-        setResult(restoreStatus(disposition, checkpointId));
-      }
-    }
   };
 
   useEffect(() => () => {
@@ -380,7 +371,8 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     pending.current.add(id);
     const generation = versionGeneration.current;
     try {
-      const text = await getVersion(initialChapter, id);
+      const book = list.state === "ready" ? list.history.chapter.book_id : undefined;
+      const text = await getVersion(initialChapter, id, book);
       if (generation !== versionGeneration.current) return;
       cache.current.set(id, text);
       setSelection((previous) => previous?.id === id ? { id, state: "ready", text } : previous);
@@ -408,29 +400,67 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
     void readHistory();
   }
 
+  function currentRestore(attempt: RestoreAttempt) {
+    return live.current && operation.current?.attempt === attempt;
+  }
+
+  function confirmRestore(attempt: RestoreAttempt, written: WriteResult) {
+    if (pendingRestores?.get(initialChapter) === attempt) pendingRestores.delete(initialChapter);
+    const checkpoint = written.checkpoint_version_id;
+    const current = written.current.version_id === written.version.id && written.current.revision === 0;
+    attempt.disposition ??= attempt.notify({
+      version_id: written.version.id, checkpoint_version_id: checkpoint, draft_current: current,
+    });
+    if (!currentRestore(attempt)) return;
+    rememberFocus("version-open", attempt.id);
+    changeRestore(null);
+    setResult(restoreStatus(current ? attempt.disposition : "kept", checkpoint));
+    deferredRefresh.current = true;
+    setRefreshWake((token) => token + 1);
+  }
+
+  async function checkRestore(attempt: RestoreAttempt) {
+    if (!currentRestore(attempt)) return;
+    changeRestore({ state: "checking", attempt });
+    let written: WriteResult | null = null;
+    try {
+      written = await getWriteReceipt({ chapter: initialChapter, book: attempt.book,
+        operation: "restore", requestId: attempt.requestId, source: attempt.id });
+    } catch { /* The receipt can still become visible after an uncertain response. */ }
+    if (!currentRestore(attempt)) return;
+    if (written) confirmRestore(attempt, written);
+    else {
+      changeRestore({ state: "unconfirmed", attempt });
+      setResult({ part: "restore-failure", message: copy["history.restoreUnconfirmed"] });
+    }
+  }
+
   async function pressRestore(item: HistoryItem) {
     if (locked || operation.current !== null || labelPending() || namingRef.current?.phase === "pending" || list.state !== "ready") return;
-    const generation = versionGeneration.current;
-    const stillMounted = () => root.current !== null && generation === versionGeneration.current;
-    const knownIds = new Set(list.history.versions.map(({ id }) => id));
-    changeRestore({ state: "restoring", id: item.id });
-    setResult(null);
-
-    let written;
-    try {
-      written = await restoreVersion(initialChapter, item.id);
-    } catch {
-      if (stillMounted()) {
-        changeRestore({ state: "settling", knownIds, textHash: item.text_hash, notify: onRestored });
-        setResult({ part: "restore-failure", message: copy["history.restoreFailed"] });
-        void readHistory();
-      }
+    let requestId: string;
+    try { requestId = globalThis.crypto.randomUUID(); }
+    catch {
+      setResult({ part: "restore-failure", message: copy["history.restoreFailed"] });
       return;
     }
-    if (stillMounted()) changeRestore(null);
-    const checkpointId = written.checkpoint_version_id;
-    const disposition = onRestored({ version_id: written.version.id, checkpoint_version_id: checkpointId });
-    if (stillMounted()) setResult(restoreStatus(disposition, checkpointId));
+    const attempt = { id: item.id, book: list.history.chapter.book_id, requestId, notify: onRestoreStart?.() ?? onRestored };
+    pendingRestores?.set(initialChapter, attempt);
+    changeRestore({ state: "restoring", attempt });
+    setResult(null);
+    let written: WriteResult;
+    try {
+      written = await restoreVersion(initialChapter, attempt.book, item.id, requestId);
+    } catch (error) {
+      if (isDefiniteWriteFailure(error)) {
+        if (pendingRestores?.get(initialChapter) === attempt) pendingRestores.delete(initialChapter);
+        if (currentRestore(attempt)) {
+          changeRestore(null);
+          setResult({ part: "restore-failure", message: copy["history.restoreFailed"] });
+        }
+      } else await checkRestore(attempt);
+      return;
+    }
+    confirmRestore(attempt, written);
   }
 
   function eligible(item: HistoryItem) {
@@ -537,6 +567,16 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
           <button type="button" className="ax-button ax-button--secondary ax-history__retry" data-part="refresh-again" onClick={retryHistory}>{copy["history.refreshAgain"]}</button>
         </>}
         {result && <p className="ax-history__note ax-history__result" data-part={result.part} role="status">{result.message}</p>}
+        {restore && restore.state !== "restoring" && <>
+          {!result && <p className="ax-history__note ax-history__result" role="status">
+            {copy[restore.state === "checking" ? "history.restoreChecking" : "history.restoreUnconfirmed"]}
+          </p>}
+          <button type="button" className="ax-button ax-button--secondary ax-history__retry"
+            data-part="restore-check-again" aria-disabled={restore.state === "checking"}
+            onClick={() => { if (operation.current?.state === "unconfirmed") void checkRestore(operation.current.attempt); }}>
+            {copy["draft.checkAgain"]}
+          </button>
+        </>}
         <div role="group" aria-label={copy["history.snapshot.filter"]} data-part="snapshot-filter" className="ax-history__snapshot-filter">
           {(["named", "all"] as const).map(value => <button key={value} type="button" data-part={value === "named" ? "snapshot-named" : "snapshot-all"}
             className="ax-history__snapshot-filter-button" aria-pressed={filter === value} onClick={() => setFilter(value)}>
@@ -588,7 +628,7 @@ function MountedHistory({ chapterId, seriesId, refreshToken = 0, timeZone, locke
             {visible.map((item) => {
               const index = list.history.versions.findIndex(row => row.id === item.id);
               const selected = selection?.id === item.id ? selection : null;
-              const restoring = restore?.state === "restoring" && restore.id === item.id;
+              const restoring = restore?.state === "restoring" && restore.attempt.id === item.id;
               return <VersionEntry key={item.id} item={item}
                 timeZone={timeZone} inBook={item.id === list.history.active_version_id}
                 selection={selected} namingAction={eligible(item) ? nameAction(item) : undefined} onOpen={toggleVersion} onRetry={(id) => { void readVersion(id); }}

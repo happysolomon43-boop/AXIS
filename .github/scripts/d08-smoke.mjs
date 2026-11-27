@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { request, withPreview } from "./preview-smoke.mjs";
+import { request, withPreview, writeGuard } from "./preview-smoke.mjs";
 
 await withPreview(async () => {
   const tree = await request(1, "POST", "/series", 201, { title: "Ashfall" });
@@ -14,14 +14,14 @@ await withPreview(async () => {
   const history = `${path}/history`;
 
   const second = await request(3, "POST", versions, 201, {
-    content: "# Title\n\nOne\n\n---\n\nTwo", parent_version: v1,
+    content: "# Title\n\nOne\n\n---\n\nTwo", parent_version: v1, ...writeGuard(v1),
   });
   const v2 = second.version?.id;
   assert.ok(v2, "Step 3 second version ID");
   assert.equal(second.version.version_no, 2, "Step 3 version number");
 
   const third = await request(4, "POST", `${path}/send`, 201, {
-    content: "# Title\n\nOne\n\n---\n\nTwo!", parent_version: v2,
+    content: "# Title\n\nOne\n\n---\n\nTwo!", parent_version: v2, ...writeGuard(v2),
   });
   const v3 = third.version?.id;
   assert.ok(v3, "Step 4 third version ID");

@@ -1,3 +1,4 @@
+import { workingPath, workingRead } from "./writeFixtures";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
@@ -29,10 +30,9 @@ test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writin
     { method: "GET", path: seriesPath, reply: reply({ series: [seriesA] }) },
     { method: "GET", path: `${seriesPath}/${seriesA.id}`, reply: reply(treeA) },
     { method: "GET", path: chaptersPath, reply: chapterList([{ ...binderChapter, title: "Title", word_count: 2, version_id: a }]) },
-    { method: "GET", path: chapterPath, reply: () => reply({
+    workingRead(chapterPath, () => reply({
       ...detailText, version: versions.at(-1)!, blocks: detailText.blocks.slice(0, 2), scenes: [],
-    } satisfies ChapterDetail) },
-    { method: "GET", path: draftPath, reply: () => reply(stored) },
+    } satisfies ChapterDetail), () => reply(stored)),
     { method: "PUT", path: draftPath, reply: (call, n) => {
       const { content, base_version, base_revision } = call.body as Pick<DraftHead, "content" | "base_version"> & { base_revision: number };
       const current_version = versions.at(-1)!.id;
@@ -71,7 +71,7 @@ test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writin
 
   await advance(30000);
 
-  const draftCalls = calls.filter(({ path }) => path === draftPath);
+  const draftCalls = calls.filter(({ path }) => path === draftPath || path === workingPath(chapterPath));
   expect(draftCalls.map(({ method }) => method)).toEqual(["GET", "PUT", "PUT", "GET"]);
   const input = { content: edited, base_version: a, base_revision: 0 };
   expect(draftCalls[1].body).toEqual(input);

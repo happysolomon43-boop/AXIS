@@ -83,11 +83,26 @@ export type ChapterDetail = {
   scenes: SceneRow[];
 };
 export type VersionWritten = { chapter: ChapterRow; version: VersionRow; active_version_id: string | null; sync?: ChapterSync };
-export type RestoreWritten = VersionWritten & { checkpoint_version_id: string | null };
+export type WriteOperation = "save" | "send" | "restore" | "keep_mine";
+export type WriteRequest = {
+  request_id: string;
+  content: string;
+  parent_version: string;
+  base_version: string;
+  base_revision: number;
+};
+export type WriteResult = VersionWritten & {
+  request_id: string;
+  operation: WriteOperation;
+  source_version_id: string | null;
+  checkpoint_version_id: string | null;
+  current: { version_id: string; revision: number; active_version_id: string | null; sync: ChapterSync };
+};
 
 export type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
 export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync?: ChapterSync };
+export type WorkingState = ChapterDetail & { draft: DraftHead | null; sync: ChapterSync };
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync?: ChapterSync };
 
 export type VersionBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;

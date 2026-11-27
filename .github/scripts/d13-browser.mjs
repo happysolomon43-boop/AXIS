@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
-import { request, withPreview } from "./preview-smoke.mjs";
+import { request, withPreview, writeGuard } from "./preview-smoke.mjs";
 
 const { chromium } = await import(pathToFileURL(process.env.AXIS_BROWSER_MODULE).href);
 const part = (page, name) => page.locator('[data-part="' + name + '"]');
@@ -14,11 +14,11 @@ await withPreview(async () => {
   const tree=await request(1,"POST","/series",201,{title:"D13 responsive acceptance"});
   const first=await request(2,"POST","/books/"+tree.books[0].id+"/chapters",201,{content:"The gate shut."});
   const chapter=first.chapter.id, path="/chapters/"+chapter;
-  const saved=await request(3,"POST",path+"/versions",201,{content:"The bell rang.",parent_version:first.version.id});
+  const saved=await request(3,"POST",path+"/versions",201,{content:"The bell rang.",parent_version:first.version.id,...writeGuard(first.version.id)});
   const longName="W".repeat(199)+"😀";
   const named=await request(4,"POST","/series/"+tree.series.id+"/named-cuts",201,{kind:"snapshot",chapter_id:chapter,version_id:saved.version.id,name:longName});
   assert.equal(named.snapshot.name,longName);
-  const newest=await request(5,"POST",path+"/versions",201,{content:"The gate opened.",parent_version:saved.version.id});
+  const newest=await request(5,"POST",path+"/versions",201,{content:"The gate opened.",parent_version:saved.version.id,...writeGuard(saved.version.id)});
   const browser=await chromium.launch({headless:true,...(process.env.AXIS_BROWSER_EXECUTABLE?{executablePath:process.env.AXIS_BROWSER_EXECUTABLE}:{})});
   try {
     for(const coarse of [false,true]) {

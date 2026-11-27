@@ -1,10 +1,12 @@
+import { receiptPath, receiptRoute, workingPath, workingRead, writeResponse, writeResult } from "./writeFixtures";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { undo } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { Shell } from "../src/shell/Shell";
 import { chapterList, chapterPath, detailText, fourRows, reply } from "./d06.fixtures";
-import { draftNone, draftPath, edit, fakeClock } from "./draftFixtures";
-import { chaptersPath, deferred, mockApi, treeA } from "./helpers";
+import { draftNone, edit, fakeClock } from "./draftFixtures";
+import { chaptersPath, deferred, mockApi, treeA, type Call } from "./helpers";
 import { historyPath, versionPath, versionTextB } from "./historyFixtures";
 import { historyAfterRestore, historyH3, restorePath, restoreReply, rowB } from "./restoreFixtures";
 
@@ -30,19 +32,22 @@ const restoredDetail = {
   active_version_id: restoreReply.body.active_version_id,
 };
 
-async function mount({ pending, secondChapter = false }: {
-  pending?: Promise<typeof restoreReply>; secondChapter?: boolean;
+async function mount({ pending, receipt, secondChapter = false }: {
+  pending?: Promise<typeof restoreReply | "network">; receipt?: (attempt: Call) => ReturnType<typeof reply>; secondChapter?: boolean;
 } = {}) {
   editor.view = null;
+  let attempted: Call;
   const { calls } = mockApi([
     { method: "GET", path: chaptersPath, reply: chapterList(fourRows.slice(0, secondChapter ? 2 : 1)) },
-    { method: "GET", path: chapterPath, reply: (_, n) => reply(n === 0 ? detailText : restoredDetail) },
-    { method: "GET", path: draftPath, reply: reply(draftNone) },
+    workingRead(chapterPath, (_, n) => reply(n === 0 ? detailText : restoredDetail), reply(draftNone)),
     { method: "GET", path: historyPath, reply: (_, n) => reply(n === 0 ? historyH3 : historyAfterRestore) },
     { method: "GET", path: versionPath(rowB.id), reply: reply(versionTextB) },
-    { method: "POST", path: restorePath, reply: () => pending ?? restoreReply },
-    { method: "GET", path: pathB, reply: reply(detailB) },
-    { method: "GET", path: `${pathB}/draft`, reply: reply({ chapter: chapterB, draft: null }) },
+    { method: "POST", path: restorePath, reply: async (call) => {
+      attempted = call;
+      return writeResponse(call, await pending ?? restoreReply);
+    } },
+    ...(receipt ? [{ method: "GET", path: receiptRoute, reply: () => receipt(attempted) }] : []),
+    workingRead(pathB, reply(detailB), reply({ chapter: chapterB, draft: null })),
     { method: "GET", path: `${pathB}/history`, reply: reply({ chapter: chapterB, versions: [], active_version_id: null }) },
   ]);
   const ui = render(<Shell tree={treeA} />);
@@ -120,7 +125,7 @@ test("AC4 handles a late success after the Drawer closes or a different chapter 
   await act(async () => { post.resolve(restoreReply); });
   expect(ui.draft()).toBe(draft);
   expect(ui.draft()).toHaveAttribute("data-state", "clean");
-  expect(ui.readsAfter(closed)).toEqual([`GET ${chapterPath}`, `GET ${draftPath}`, `GET ${chaptersPath}`].sort());
+  expect(ui.readsAfter(closed)).toEqual([`GET ${workingPath(chapterPath)}`, `GET ${chaptersPath}`].sort());
   ui.unmount();
 
   const later = deferred<typeof restoreReply>();
@@ -137,4 +142,41 @@ test("AC4 handles a late success after the Drawer closes or a different chapter 
   expect(switched.part("editor")).toBe(otherEditor);
   expect(switched.part("restore-status")).toBeNull();
   expect(switched.readsAfter(changed)).toEqual([`GET ${chaptersPath}`]);
+});
+
+test("an unresolved Restore keeps its UUID when the History drawer is reopened", async () => {
+  const post = deferred<"network">();
+  let checks = 0;
+  const ui = await mount({ pending: post.promise, receipt: attempted => {
+    checks++;
+    return reply({ receipt: checks === 1 ? null : writeResult(attempted, restoreReply.body) });
+  } });
+  await ui.preview();
+  fireEvent.click(ui.part("version-restore"));
+  await act(async () => { post.resolve("network"); });
+  expect(ui.part("restore-check-again")).toBeInTheDocument();
+  fireEvent.click(ui.part("drawer-close"));
+  await act(async () => { fireEvent.click(ui.part("history-door")); });
+  expect(ui.part("restore-check-again")).toBeInTheDocument();
+  await act(async () => { fireEvent.click(ui.part("restore-check-again")); });
+  expect(ui.posts()).toHaveLength(1);
+  const id = (ui.posts()[0].body as { request_id: string }).request_id;
+  expect(ui.calls.filter(call => receiptRoute.test(call.path)).map(call => call.path)).toEqual([
+    receiptPath(chapterPath, id), receiptPath(chapterPath, id),
+  ]);
+  expect(ui.part("restore-status")).toHaveTextContent("Restored into your draft.");
+});
+
+test("Restore settlement preserves the editor when intervening typing has already been undone", async () => {
+  const post = deferred<typeof restoreReply>();
+  const ui = await mount({ pending: post.promise });
+  await ui.preview();
+  const original = editor.view!;
+  fireEvent.click(ui.part("version-restore"));
+  edit(original);
+  act(() => { expect(undo(original.state, original.dispatch)).toBe(true); });
+  expect(ui.draft()).toHaveAttribute("data-state", "clean");
+  await act(async () => { post.resolve(restoreReply); });
+  expect(editor.view).toBe(original);
+  expect(ui.part("restore-status")).toHaveTextContent("The text in your draft was not replaced.");
 });

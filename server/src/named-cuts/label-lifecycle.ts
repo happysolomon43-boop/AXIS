@@ -1,4 +1,5 @@
 /// <reference lib="es2024.string" />
+import { reportFailure } from "../logging.js";
 import type { Pool, PoolClient } from "pg";
 import { findOwnedChapter } from "../corpus/repo.js";
 import { AppError } from "../errors.js";
@@ -83,7 +84,7 @@ export async function changeChapterSnapshotLabel(pool: Pool, actorId: string, ch
     await client.query("COMMIT");
     return response;
   } catch(error) {
-    try {await client.query("ROLLBACK");} catch {discard=true;}
+    try {await client.query("ROLLBACK");} catch (rollbackError) { reportFailure("database_rollback_failed", rollbackError);discard=true;}
     throw error;
   } finally {client.release(discard);}
 }

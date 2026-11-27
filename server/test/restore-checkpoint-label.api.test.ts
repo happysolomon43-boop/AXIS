@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
 import type { ChapterHistory } from "../src/corpus/repo.js";
-import type { RestoreWritten } from "../src/versions/restore.js";
+import type { WriteResult } from "../src/writes/receipts.js";
 import { makePool, resetDb } from "./helpers.js";
 import { alice, bob, fixture, labels, state } from "./namedCutsFixtures.js";
 import { seedSeries } from "./seed.js";
@@ -28,13 +28,13 @@ const lifecycleRows = async () =>
 
 const requestRestore = (chapter = chapterId, version = a, headers = alice) =>
   f.app.inject({
-    method: "POST", url: `/chapters/${chapter}/restore`, headers, payload: { version_id: version },
+    method: "POST", url: `/chapters/${chapter}/restore`, headers, payload: { request_id: randomUUID(), version_id: version },
   });
 
 async function restore(version = a) {
   const response = await requestRestore(chapterId, version);
   expect(response.statusCode, response.body).toBe(201);
-  return response.json<RestoreWritten>();
+  return response.json<WriteResult>();
 }
 
 async function putHead(base = b, content = kept) {
@@ -47,7 +47,7 @@ test("AXB-0116 AC1: only the kept checkpoint receives the name in the Restore tr
   await putHead();
   const before = await state(pool);
   const written = await restore();
-  expect(written).toEqual({
+  expect(written).toMatchObject({
     chapter: { id: chapterId, book_id: f.bookId, order_key: "0000001000" },
     version: {
       id: expect.stringMatching(/^ver_[0-9a-f]{12}$/), chapter_id: chapterId, source: "restore",

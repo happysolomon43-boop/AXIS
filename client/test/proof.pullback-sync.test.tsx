@@ -1,3 +1,4 @@
+import { workingPath, workingRead, writeResponse } from "./writeFixtures";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { EditorView } from "prosemirror-view";
@@ -21,11 +22,10 @@ test("AXB-0088 AC2 Break-It Probe: Send wins against a held Pull back snapshot",
   const stale=deferred<ReturnType<typeof reply>>(),fresh=deferred<ReturnType<typeof reply>>();
   const {calls}=mockApi([
     {method:"GET",path:chaptersPath,reply:(_,n)=>reply(n===0?list(syncInBook,b):n===1?list(syncRevisedSame,b):list(syncInBook,c))},
-    {method:"GET",path:chapterPath,reply:reply({...detailText,active_version_id:b})},
-    {method:"GET",path:draftPath,reply:withSync({status:200,body:draftNone},syncInBook)},
+    workingRead(chapterPath, reply({...detailText,active_version_id:b}), withSync({status:200,body:draftNone},syncInBook)),
     {method:"POST",path:pull,reply:{...pullBackReplyB,body:{chapter:chapterA,active_version_id:b}}},
     {method:"GET",path:meta,reply:(_,n)=>{if(n===0)return stale.promise;if(n===1)return fresh.promise;throw Error("unexpected third projection");}},
-    {method:"POST",path:send,reply:reply(writtenC(c),201)},
+    {method:"POST",path:send,reply:call=>writeResponse(call,reply(writtenC(c),201))},
   ]);
   const ui=render(<Shell tree={pbTree}/>);
   try{
@@ -53,7 +53,7 @@ test("AXB-0088 AC2 Break-It Probe: Send wins against a held Pull back snapshot",
     await act(async()=>{fresh.resolve(reply({sync:syncInBook}));});
     expect(part(root,"version-chip")).toBeNull();
     expect(editor.view).toBe(view);expect(view.state.doc.eq(text)).toBe(true);
-    expect(calls.slice(start).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+chapterPath,"GET "+draftPath,
+    expect(calls.slice(start).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+workingPath(chapterPath),
       "POST "+pull,"POST "+send,"GET "+chaptersPath,"GET "+chaptersPath,"GET "+meta,"GET "+meta,
     ].sort());
   }finally{

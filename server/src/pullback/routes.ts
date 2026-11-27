@@ -25,15 +25,10 @@ export function registerPullBackRoutes(app: FastifyInstance, { pool }: Deps): vo
   }, async (request, reply) => {
     const ownerId = requireUser(request);
     const { id } = request.params;
-    try {
-      const chapter = id.length > 64 || id.includes("\u0000") ? null : await findOwnedChapter(pool, ownerId, id);
-      if (!chapter) throw new AppError(404, "not_found", "Chapter not found");
-      const result = await pullBackChapter(pool, chapter, ownerId, bodyless.has(request) ? undefined : request.body.expected_active_version_id);
-      if (!result) throw new AppError(404, "not_found", "Chapter not found");
-      return reply.code(200).send(result);
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      throw new AppError(500, "internal", "Internal error");
-    }
+    const chapter = id.length > 64 || id.includes("\u0000") ? null : await findOwnedChapter(pool, ownerId, id);
+    if (!chapter) throw new AppError(404, "not_found", "Chapter not found");
+    const result = await pullBackChapter(pool, chapter, ownerId, bodyless.has(request) ? undefined : request.body.expected_active_version_id);
+    if (!result) throw new AppError(404, "not_found", "Chapter not found");
+    return reply.code(200).send(result);
   });
 }

@@ -1,4 +1,5 @@
 /// <reference lib="es2024.string" />
+import { reportFailure } from "../logging.js";
 import type { Pool, PoolClient } from "pg";
 import { AppError } from "../errors.js";
 
@@ -75,7 +76,7 @@ Promise<{ status: 200 | 201; snapshot: NamedSnapshot }> {
     await client.query("COMMIT");
     return { status: 201, snapshot: dto(inserted) };
   } catch (error) {
-    try { await client.query("ROLLBACK"); } catch { discard = true; }
+    try { await client.query("ROLLBACK"); } catch (rollbackError) { reportFailure("database_rollback_failed", rollbackError); discard = true; }
     throw error;
   } finally { client.release(discard); }
 }

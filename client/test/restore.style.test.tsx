@@ -1,3 +1,4 @@
+import { writeResponse } from "./writeFixtures";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { History, type OnRestored } from "../src/history/History";
@@ -15,7 +16,7 @@ async function mount(post: Handler["reply"]) {
   mockApi([
     { method: "GET", path: historyPath, reply: reply(historyH3) },
     { method: "GET", path: versionPath(rowB.id), reply: reply(versionTextB) },
-    { method: "POST", path: restorePath, reply: post },
+    { method: "POST", path: restorePath, reply: async (call, n) => writeResponse(call, typeof post === "function" ? await post(call, n) : post) },
   ]);
   const onRestored = vi.fn<OnRestored>(() => "applied");
   const view = (locked = false) =>
@@ -66,7 +67,8 @@ test("AC1 draws a quiet Restore action and inline status in each state", async (
   const failure = await mount(internalEnvelope);
   await act(async () => { fireEvent.click(failure.part("version-restore")); });
   expect(failure.part("restore-failure")).toHaveClass("ax-history__note", "ax-history__result");
-  expect(failure.part("restore-failure").nextElementSibling).toBe(failure.part("snapshot-filter"));
+  expect(failure.part("restore-failure").nextElementSibling).toBe(failure.part("restore-check-again"));
+  expect(failure.part("restore-check-again").nextElementSibling).toBe(failure.part("snapshot-filter"));
   expect(failure.part("snapshot-filter").nextElementSibling).toBe(failure.part("snapshot-name-status"));
   expect(failure.part("snapshot-name-status").nextElementSibling).toBe(failure.part("snapshot-lifecycle-status").parentElement);
   expect(failure.part("snapshot-lifecycle-status").parentElement?.nextElementSibling).toBe(failure.part("version-list"));

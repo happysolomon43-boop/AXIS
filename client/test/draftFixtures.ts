@@ -6,6 +6,7 @@ import { Draft } from "../src/draft/Draft";
 import tokens from "../src/styles/tokens.css?raw";
 import type { ChapterDetail, DraftDetail, DraftWritten } from "../src/api/types";
 import { b, c, d, chapterPath, detailText, reply, verRow } from "./d06.fixtures";
+import { workingRead } from "./writeFixtures";
 import { mockApi } from "./helpers";
 
 export const chapterA = { id: "ch_00000000000a", book_id: "bk_00000000000a", order_key: "0000001000" };
@@ -58,8 +59,7 @@ export function mountDraft(
   } = {},
 ) {
   const { calls } = mockApi([
-    { method: "GET", path: chapterPath, reply: chapter },
-    { method: "GET", path: draftPath, reply: draft },
+    workingRead(chapterPath, chapter, draft),
     ...(put === undefined ? [] : [{ method: "PUT", path: draftPath, reply: put }]),
     ...writes,
   ]);
@@ -107,7 +107,7 @@ export async function mountConflict({
   nextPut?: Handler["reply"];
 } = {}) {
   const ui = mountDraft({
-    chapter,
+    chapter: (call, n) => typeof chapter === "function" ? chapter(call, Math.max(0, n - 1)) : chapter,
     draft: (call, n) => {
       if (n === 0) return reply(draftNone);
       if (n === 1) return reply(draftHeadOther);

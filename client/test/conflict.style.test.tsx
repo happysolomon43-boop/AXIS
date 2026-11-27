@@ -10,7 +10,7 @@ afterEach(() => vi.useRealTimers());
 test("AC1 renders an ink banner with secondary choices, a note, and the proper head order", async () => {
   const ui = await mountConflict({
     chapter: (_, n) => n === 1 ? internalError : reply(detailText),
-    writes: [{ method: "POST", path: `${chapterPath}/versions`, reply: internalError }],
+    writes: [{ method: "POST", path: `${chapterPath}/keep-mine`, reply: { status: 400, body: { error: { code: "validation_failed", message: "Invalid" } } } }],
   });
   const head = ui.part("draft-head");
   const banner = ui.part("conflict");

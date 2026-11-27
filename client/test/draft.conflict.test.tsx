@@ -1,3 +1,4 @@
+import { workingPath, writeResponse } from "./writeFixtures";
 import { act, fireEvent } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { b, c, d, chapterPath, detailText, reply, writtenC } from "./d06.fixtures";
@@ -8,7 +9,7 @@ afterEach(() => vi.useRealTimers());
 
 const edited = "# Title\n\nOne\n\n---\n\nTwo!";
 const failureCopy = "The latest version could not be read. Your text is still here.";
-const versionPath = `${chapterPath}/versions`;
+const versionPath = `${chapterPath}/keep-mine`;
 
 test("AC1 stops on a different head and keeps the text editable and copyable", async () => {
   const ui = await mountConflict();
@@ -40,15 +41,15 @@ test("AC1 stops on a different head and keeps the text editable and copyable", a
 
 test("AC2 keeps the local text through Save and retains the conflict after a failed write", async () => {
   const write = deferred<ReturnType<typeof reply>>();
-  let ui = await mountConflict({ writes: [{ method: "POST", path: versionPath, reply: () => write.promise }] });
+  let ui = await mountConflict({ writes: [{ method: "POST", path: versionPath, reply: async (call) => writeResponse(call, await write.promise) }] });
   fireEvent.click(ui.part("keep-mine"));
   expect(ui.root).toHaveAttribute("data-state", "saving");
   expect(ui.root).toHaveAttribute("data-autosave", "stopped");
   expect(ui.part("conflict")).toBeNull();
   expect(ui.calls.filter(({ method }) => method === "POST")).toEqual([expect.objectContaining({
-    path: versionPath, body: { content: edited, parent_version: b },
+    path: versionPath, body: expect.objectContaining({ content: edited, parent_version: b, base_version: b, base_revision: 1 }),
   })]);
-  await act(async () => { write.resolve(reply(writtenC(null), 201)); });
+  await act(async () => { write.resolve(reply({ ...writtenC(null), checkpoint_version_id: d }, 201)); });
   expect(ui.root).toHaveAttribute("data-state", "clean");
   expect(ui.root).toHaveAttribute("data-autosave", "idle");
   expect(ui.part("conflict")).toBeNull();
@@ -60,11 +61,11 @@ test("AC2 keeps the local text through Save and retains the conflict after a fai
   ui.unmount();
   vi.useRealTimers();
 
-  ui = await mountConflict({ writes: [{ method: "POST", path: versionPath, reply: internalError }] });
+  ui = await mountConflict({ writes: [{ method: "POST", path: versionPath, reply: reply({ error: { code: "write_conflict", message:"Kept", details: { reason: "draft_preserved" } } }, 409) }] });
   await act(async () => { fireEvent.click(ui.part("keep-mine")); });
-  expect(ui.root).toHaveAttribute("data-state", "write-failed");
+  expect(ui.root).toHaveAttribute("data-state", "conflict");
   expect(ui.part("conflict")).toBeInTheDocument();
-  expect(ui.part("write-failure")).toBeInTheDocument();
+  expect(ui.part("conflict")).toHaveTextContent("The other draft was kept.");
   const view = ui.view();
   const end = view.state.doc.content.size - 1;
   act(() => view.dispatch(view.state.tr.delete(end - 1, end)));
@@ -93,11 +94,11 @@ test("AC3 reloads the version followed by the head, then remounts and focuses th
       expect(ui.part(part)).toHaveAttribute("aria-disabled", "true");
       fireEvent.click(ui.part(part));
     }
-    expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: chapterPath });
-    expect(ui.calls.filter(({ path }) => path === chapterPath)).toHaveLength(2);
-    expect(ui.calls.filter(({ method, path }) => method === "GET" && path === draftPath)).toHaveLength(2);
+    expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: workingPath(chapterPath) });
+    expect(ui.calls.filter(({ path }) => path === workingPath(chapterPath))).toHaveLength(3);
+    expect(ui.calls.filter(({ method, path }) => method === "GET" && path === draftPath)).toHaveLength(0);
     await act(async () => { chapter.resolve(reply(detailD)); });
-    expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: draftPath });
+    expect(ui.calls.at(-1)).toMatchObject({ method: "GET", path: workingPath(chapterPath) });
     expect(ui.part("editor")).toBe(oldEditor);
     await act(async () => { draft.resolve(reply(head)); });
     expect(ui.part("editor")).not.toBe(oldEditor);
@@ -148,7 +149,7 @@ test("AC4 failed Reload keeps the undo history and text, allows retry, and ignor
     expect(ui.part("reload-failure")).toBeNull();
     await act(async () => {});
     expect(ui.root).toHaveAttribute("data-state", "clean");
-    expect(ui.calls.filter(({ path }) => path === chapterPath)).toHaveLength(3);
+    expect(ui.calls.filter(({ path }) => path === workingPath(chapterPath))).toHaveLength(4);
     expect(ui.onWritten).not.toHaveBeenCalled();
     ui.unmount();
     vi.useRealTimers();

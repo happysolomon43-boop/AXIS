@@ -49,7 +49,8 @@ async function seedCheckpoints() {
     await pool.query("UPDATE books SET status = 'released' WHERE id = $1", [released.bookId]);
     const c2 = await seedVersionAs(pool, released.seriesId, y, "Text kept in a released Book.", "checkpoint", "chapter.checkpoint");
     const odd = await seedVersionAs(pool, released.seriesId, y, "Not from Restore.", "checkpoint", "chapter.version.append");
-    return { x, c1, c2, unnamed: [a.version.id, r, b, odd] };
+    const conflict = await seedVersionAs(pool, released.seriesId, y, "Other draft.", "checkpoint", "chapter.keep_mine.checkpoint");
+    return { x, c1, c2, unnamed: [a.version.id, r, b, odd, conflict] };
   } finally {
     await drafting.app.close();
     await released.app.close();
@@ -138,7 +139,7 @@ test("AXB-0114 AC3: rollback preserves labels and refuses to discard removal sta
     const original = await names(client);
     const live = await lifecycles(client);
     await client.query(await down());
-    expect(migrations).toHaveLength(15);
+    expect(migrations).toHaveLength(16);
     expect(await recorded(client)).toEqual(migrations.filter((row) => row.filename !== filename));
     expect(await names(client)).toEqual(original);
     expect(await lifecycles(client)).toEqual(live);
@@ -157,11 +158,11 @@ test("AXB-0114 AC3: rollback preserves labels and refuses to discard removal sta
     await client.query("ROLLBACK TO SAVEPOINT removed");
     expect(await lifecycles(client)).toEqual(removed);
     expect(await names(client)).toEqual(remaining);
-    expect(await recorded(client)).toEqual(migrations.slice(0, 14));
+    expect(await recorded(client)).toEqual(migrations.filter((row) => row.filename !== filename));
 
     await client.query("ROLLBACK TO SAVEPOINT live");
     await client.query(earlierDown);
-    expect(await recorded(client)).toEqual(migrations.slice(0, 13));
+    expect(await recorded(client)).toEqual(migrations.filter((row) => row.filename !== filename && !row.filename.startsWith("0014_")));
     expect(await names(client)).toEqual(original);
     expect((await client.query("SELECT to_regclass('snapshot_label_lifecycles') AS name")).rows)
       .toEqual([{ name: null }]);
@@ -178,7 +179,7 @@ test.each([false, true])("AXB-0114 AC3: real runner reapplies 0015 after rollbac
     // The real runner must see the committed rollback records on its own connection.
     await pool.query(scripts.join("\n"));
     expect(await runMigrations(pool, dir)).toEqual(includePrior ? [prior, filename] : [filename]);
-    expect(migrations).toHaveLength(15);
+    expect(migrations).toHaveLength(16);
     expect((await recorded(pool)).map((row) => row.filename)).toEqual(migrations);
     expect(await labels(pool)).toEqual(original);
     expect(original.map((row) => row.version_id).sort()).toEqual([c1, c2].sort());
