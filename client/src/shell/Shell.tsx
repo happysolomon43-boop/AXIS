@@ -124,7 +124,7 @@ export function Shell({ tree }: { tree: SeriesTree }) {
       </main>
       {historyOpen && openChapterId !== null &&
         <Drawer title={copy["history.title"]} onClose={closeHistory}>
-          <History key={openChapterId} seriesId={tree.series.id} chapterId={openChapterId} refreshToken={historyRefreshToken} locked={locked}
+          <History key={openChapterId} seriesId={tree.series.id} chapterId={openChapterId} refreshToken={historyRefreshToken + syncRefreshToken} locked={locked}
             onRestored={(outcome) => handleRestored(openChapterId, outcome)} />
         </Drawer>}
     </div>

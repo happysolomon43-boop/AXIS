@@ -14,6 +14,7 @@ import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
 import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, type EditorBlock } from "../editor/model";
 import { fireAt } from "./autosave";
+import { validChapterBase, validDraftBase } from "./pullBackBase";
 
 type Props = {
   chapterId: string;
@@ -146,6 +147,8 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const ordinarySnapshot = useRef(snapshot);
   const autosaveBasis = ordinarySnapshot.current;
   const ordinary = useRef({ generation: 0, active: 0 });
+  const baseGeneration = useRef(0);
+  const handledBaseToken = useRef(syncRefreshToken);
   const latestSyncToken = useRef(syncRefreshToken);
   const handledSyncToken = useRef(syncRefreshToken);
   const syncInFlight = useRef<{ token: number; generation: number } | null>(null);
@@ -175,6 +178,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   const beginOrdinary = useCallback(() => {
     const activity = ordinary.current;
     activity.generation++;
+    baseGeneration.current++;
     activity.active++;
     return () => {
       activity.active--;
@@ -214,6 +218,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     return () => {
       mounted.current = false;
       generation.current++;
+      baseGeneration.current++;
       ordinary.current = { generation: 0, active: 0 };
       syncInFlight.current = null;
       pendingAutosave.current = null;
@@ -450,6 +455,50 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     void refresh();
   }, [chapterId, snapshot, syncRefreshToken, syncWake]);
 
+  // The chip projection and the base check are independent. Only the notice's clean,
+  // idle editor can adopt new metadata; no writer action waits for these reads.
+  useEffect(() => {
+    const token = latestSyncToken.current;
+    if (token <= handledBaseToken.current) return;
+    handledBaseToken.current = token;
+    const s = current.current;
+    const view = editor.current;
+    if (!mounted.current || !view || s.state !== "ready" || dirty(s) || s.phase !== null ||
+        s.stopped || s.capturing || s.autosaveInFlight || ordinary.current.active !== 0) return;
+    const doc = view.state.doc;
+    const raw = s.persistedDoc && s.doc.eq(s.persistedDoc) && s.persistedRaw !== null ? s.persistedRaw : s.baselineRaw;
+    const original = s.doc, number = generation.current, checkGeneration = baseGeneration.current;
+    const activity = ordinary.current;
+    const currentAttempt = () => {
+      const live = current.current;
+      return mounted.current && generation.current === number && editor.current === view &&
+        view.state.doc === doc && baseGeneration.current === checkGeneration &&
+        latestSyncToken.current === token && ordinary.current === activity && activity.active === 0 &&
+        live.state === "ready" && live.doc === original && !dirty(live) && live.phase === null &&
+        !live.stopped && !live.capturing && !live.autosaveInFlight &&
+        (live.persistedDoc && live.doc.eq(live.persistedDoc) && live.persistedRaw !== null ? live.persistedRaw : live.baselineRaw) === raw;
+    };
+    async function verifyBase() {
+      try {
+        const detail = await getChapter(chapterId);
+        if (!currentAttempt() || !validChapterBase(detail,chapterId) || detail.version === null || detail.version.content !== raw) return;
+        const head = await getDraft(chapterId);
+        if (!currentAttempt() || !validDraftBase(head,chapterId) || head.chapter.book_id !== detail.chapter.book_id ||
+            (head.draft !== null && (head.draft.base_version !== detail.version.id || head.draft.content !== raw))) return;
+        const live = current.current;
+        if (live.state !== "ready") return;
+        const next = {...live, loadedVersionId:detail.version.id, activeVersionId:detail.active_version_id,
+          headRevision:head.draft?.revision??0, baselineRaw:raw,
+          persistedDoc:head.draft===null?null:live.doc, persistedRaw:head.draft===null?null:raw};
+        // No Editor reconstruction, focus operation, timer reset, chip update or notice.
+        current.current = next;
+        ordinarySnapshot.current = next;
+        setSnapshot(next);
+      } catch { /* Background verification leaves the previous guards intact. */ }
+    }
+    void verifyBase();
+  }, [chapterId, syncRefreshToken]);
+
   // A stopped ordinary autosave dismisses an idle capture form.
   useLayoutEffect(() => {
     if (snapshot.state === "ready" && snapshot.stopped && captureCurrent.current.form && captureCurrent.current.phase === "idle") {
@@ -596,6 +645,7 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
   }
 
   function docChange(doc: Node) {
+    baseGeneration.current++;
     const s = current.current;
     if (s.state !== "ready" || busy(s)) return;
     const now = Date.now();

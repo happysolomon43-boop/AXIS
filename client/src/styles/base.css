@@ -106,3 +106,12 @@ body {
 .ax-button.ax-opening__retry { block-size: auto; }
 .ax-button.ax-opening__retry[aria-disabled="true"] { opacity: 1; }
 .ax-button.ax-opening__retry:active:not([aria-disabled="true"]) { transition-duration: var(--ax-dur-press); }
+
+/* The D18 menu and strip blend ink without dimming the focus outline. */
+.ax-binder__menu-item[aria-disabled="true"],
+.ax-button.ax-binder__pullback-check[aria-disabled="true"] { opacity: 1; }
+.ax-button.ax-binder__menu-trigger,
+.ax-button.ax-binder__pullback-check { transition: none; }
+.ax-button.ax-binder__pullback-check { justify-content: flex-start; }
+.ax-binder__menu-item:focus,
+.ax-button.ax-binder__pullback-check:focus { box-shadow: none; }

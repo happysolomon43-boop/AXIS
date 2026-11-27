@@ -89,7 +89,7 @@ export function restoreVersion(chapterId: string, versionId: string): Promise<Re
 
 export async function pullBackChapter(chapterId: string, expectedActiveVersionId?: string): Promise<PullBackWritten> {
   const path = "/chapters/" + encodeURIComponent(chapterId) + "/pull-back";
-  const result = await request<unknown>("POST", path, expectedActiveVersionId === undefined ? undefined : {expected_active_version_id: expectedActiveVersionId});
+  const result = await request<unknown>("POST", path, expectedActiveVersionId === undefined ? undefined : {expected_active_version_id: expectedActiveVersionId}, 200);
   if (!exactObject(result, ["chapter", "active_version_id"]) ||
       !exactObject(result.chapter, ["id", "book_id", "order_key"]) ||
       typeof result.chapter.id !== "string" || !/^ch_[0-9a-f]{12}$/.test(result.chapter.id) || result.chapter.id !== chapterId ||

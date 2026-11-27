@@ -16,7 +16,7 @@ export class ApiError extends Error {
 type ErrorEnvelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 
 export function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T>;
-export function request<T>(method: "GET" | "POST" | "PUT", path: string, body: undefined, expectedSuccessStatus: 200): Promise<T>;
+export function request<T>(method: "GET" | "POST" | "PUT", path: string, body: unknown, expectedSuccessStatus: 200): Promise<T>;
 export async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown, expectedSuccessStatus?: 200): Promise<T> {
   const headers = { "X-Axis-User": getUserId() };
   const target = serviceTarget(readServiceOrigin(import.meta.env.VITE_AXIS_SERVICE_ORIGIN), path);

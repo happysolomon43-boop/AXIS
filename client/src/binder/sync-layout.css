@@ -9,15 +9,21 @@
   justify-self: end;
 }
 
-/* Keep the row's original dimming on its other controls and text. */
-.ax-binder-chapter:has(> .ax-binder__pullback):has(> [data-part="chapter-open"][aria-disabled="true"]:not([aria-current="true"])) {
-  opacity: 1;
-}
-
-.ax-binder-chapter:has(> .ax-binder__pullback):has(> [data-part="chapter-open"][aria-disabled="true"]:not([aria-current="true"])) > :not(.ax-binder__pullback) {
-  opacity: var(--ax-opacity-disabled);
-}
-
 .ax-binder__pullback {
   transition: none;
 }
+
+/* A real control must sit above the full-row open button; the menu itself owns its popover layer. */
+.ax-binder-chapter > .ax-binder__menu-trigger {
+  position: relative;
+  z-index: 2;
+  grid-column: 5;
+  grid-row: 1;
+}
+.ax-binder-chapter {
+  grid-template-columns: var(--ax-size-binder-numeral) minmax(0, 1fr) auto auto auto;
+}
+.ax-binder-chapter:has(> .ax-binder__sync) {
+  grid-template-columns: var(--ax-size-binder-numeral) minmax(0, 1fr) auto fit-content(45%) auto;
+}
+.ax-binder-chapter > .ax-binder__selected-rule { z-index: 2; }
