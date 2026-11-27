@@ -89,6 +89,7 @@ test("AXB-0076 AC1 returns only the draft contract keys and computes sync from t
 test("AXB-0076 AC2 reports a pull-back mark until the active version changes", async () => {
   const chapter = await sent();
   await post(chapter.id, "pull-back", 200);
+  chapter.version=(await pool.query("SELECT id FROM chapter_versions WHERE chapter_id=$1 ORDER BY version_no DESC LIMIT 1",[chapter.id])).rows[0].id;
   expect((await draft(chapter.id)).sync).toEqual({ state: "being_revised", same: true });
   await head(chapter, "abd");
   expect((await draft(chapter.id)).sync).toEqual({ state: "being_revised", same: false });

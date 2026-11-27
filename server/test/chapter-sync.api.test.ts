@@ -112,13 +112,14 @@ test("AC1 serves sync from the head hash or displayed-version hash and preserves
 });
 
 test("AC2 tracks the pull-back mark through edits, saves, sends and activation", async () => {
-  const { id, first, sent } = await sentChapter();
+  const { id, first } = await sentChapter();
   const sync = async () => (await chapters())[0]?.sync;
   await pullBack(id);
   expect(await sync()).toEqual({ state: "being_revised", same: true });
-  await putHead(id, sent.version.id, "abd");
+  const revisionStart=(await chapters())[0]!.version_id!;
+  await putHead(id, revisionStart, "abd");
   expect(await sync()).toEqual({ state: "being_revised", same: false });
-  const saved = await write(id, "versions", "abd", sent.version.id);
+  const saved = await write(id, "versions", "abd", revisionStart);
   expect(await sync()).toEqual({ state: "being_revised", same: false });
 
   const next = await write(id, "send", "abe", saved.version.id);

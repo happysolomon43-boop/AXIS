@@ -54,7 +54,8 @@ test("AXB-0083 AC1 exact projection pairs and agreement", async () => {
   expect(await projection(current.id)).toEqual({ state: "in_book", same: true });
   expect(await projection(edited.id)).toEqual({ state: "edited", same: false });
   expect(await projection(revised.id)).toEqual({ state: "being_revised", same: true });
-  await edit(revised);
+  const newest=(await pool.query("SELECT id FROM chapter_versions WHERE chapter_id=$1 ORDER BY version_no DESC LIMIT 1",[revised.id])).rows[0].id;
+  await edit({...revised,version:newest});
   const sync = await projection(revised.id);
   expect(sync).toEqual({ state: "being_revised", same: false });
   const rows = (await app.inject({ method: "GET", url: list(), headers: alice })).json<BookChapters>().chapters;
