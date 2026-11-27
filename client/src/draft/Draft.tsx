@@ -110,6 +110,7 @@ function autosaveStatus(s: Ready) {
 function fromRead(detail: WorkingState): Ready {
   const { draft, sync } = detail;
   if (detail.version === null) {
+    // A real blank chapter has a first version. A versionless read cannot supply a guarded write base.
     throw new Error("Draft and chapter versions do not match");
   }
   const served = blocksFromServed(detail.blocks);

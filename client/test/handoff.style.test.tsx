@@ -14,6 +14,7 @@ import { pbList, pbTree, pullBackReplyB, chapterNotFoundEnvelope } from "./pullb
 import { syncDraftOnly, syncInBook, syncEdited, syncRevisedSame, syncRevised, withSync } from "./syncDraftFixtures";
 const STYLESHEETS = [
   "../src/binder/binder.css","../src/binder/open.css","../src/binder/sync-layout.css",
+  "../src/components/reason-tooltip.css",
   "../src/draft/autosave.css","../src/draft/conflict.css","../src/draft/draft.css",
   "../src/editor/editor.css","../src/history/history.css","../src/history/restore.css","../src/history/snapshot-lifecycle.css","../src/history/snapshots.css",
   "../src/onboarding/onboarding.css","../src/shell/drawer.css","../src/shell/shell.css",

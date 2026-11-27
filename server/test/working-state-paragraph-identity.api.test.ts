@@ -1,4 +1,7 @@
 import { afterAll, beforeEach, expect, test } from "vitest";
+import type { Pool, PoolClient } from "pg";
+import { Writable } from "node:stream";
+import { buildApp } from "../src/app.js";
 import { makePool, resetDb } from "./helpers.js";
 import { fixture, state, labels, alice, bob } from "./namedCutsFixtures.js";
 import type { WorkingState } from "../src/drafts/repository.js";
@@ -36,4 +39,34 @@ test.each([raw,changed,""])("AXB-0138 coherent head projection and unchanged leg
     expect(await state(pool)).toEqual(before);expect(await labels(pool)).toEqual(named);
     expect(Number((await pool.query("SELECT count(*) AS n FROM schema_migrations")).rows[0].n)).toBe(16);
   }finally{await f.app.close();}
+});
+
+test("AXB-0138 corrupt equal-text segmentation fails closed without content or UID in the log",async()=>{
+ const f=await fixture(pool);
+ let app:ReturnType<typeof buildApp>|undefined;
+ try{
+  const created=await f.create(raw);
+  expect((await f.head(created.chapter.id,created.version.id,raw)).statusCode).toBe(200);
+  const before=await state(pool),named=await labels(pool);
+  let log="", corrupted=false;
+  const connection={
+   query:pool.query.bind(pool),
+   async connect(){
+    const client=await pool.connect();
+    return {release:client.release.bind(client),async query(sql:string,args?:unknown[]){
+     const result=await client.query(sql,args);
+     if(sql.startsWith("SELECT block_uid, ordinal, kind, text, hash FROM blocks")&&result.rows.length){
+      corrupted=true;return {...result,rows:result.rows.map((row,i)=>i===1?{...row,text:"private mismatched content"}:row)};
+     }
+     return result;
+    }} as PoolClient;
+   },
+  } as Pool;
+  app=buildApp({pool:connection},new Writable({write(chunk,_encoding,done){log+=chunk.toString();done();}}));
+  const response=await app.inject({method:"GET",url:"/chapters/"+created.chapter.id+"/working-state",headers:alice});
+  expect(corrupted).toBe(true);expect(response.statusCode).toBe(500);
+  expect(response.json()).toEqual({error:{code:"internal",message:"Internal error",details:null}});
+  expect(log).toContain("request_failed");expect(log).not.toContain("private mismatched content");expect(log).not.toContain(created.chapter.id);expect(log).not.toContain(created.version.id);expect(log).not.toContain("River.");
+  expect(await state(pool)).toEqual(before);expect(await labels(pool)).toEqual(named);
+ }finally{await app?.close();await f.app.close();}
 });

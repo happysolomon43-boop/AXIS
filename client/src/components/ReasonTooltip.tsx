@@ -12,7 +12,8 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     if (!active || !el || !tip) return;
     let dwell: number | undefined, grace: number | undefined;
     let triggerHover = false, tipHover = false, focused = document.activeElement === el;
-    let touch: number | null = null, held = false;
+    let touch: number | null = null, held = false, touchFocus = false;
+    let focusReset: number | undefined;
     let dismissed = false;
     const token = (name: string, fallback: number) => {
       const value = parseFloat(getComputedStyle(el).getPropertyValue(name));
@@ -21,7 +22,7 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     const cancelDwell = () => { window.clearTimeout(dwell); dwell = undefined; };
     const cancelGrace = () => { window.clearTimeout(grace); grace = undefined; };
     function dismiss() {
-      cancelDwell(); cancelGrace(); touch = null; held = false; dismissed = true; triggerHover = false; tipHover = false;
+      cancelDwell(); cancelGrace(); window.clearTimeout(focusReset); touch = null; held = false; touchFocus = false; dismissed = true; triggerHover = false; tipHover = false;
       tip!.hidden = true;
     }
     function place() {
@@ -31,7 +32,7 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       const height = v?.height ?? document.documentElement.clientHeight ?? window.innerHeight;
       const right = left + (width || window.innerWidth), bottom = top + (height || window.innerHeight);
       const r = el!.getBoundingClientRect();
-      if (!el!.isConnected || r.right < left || r.left >= right || r.bottom < top || r.top >= bottom) {
+      if (!el!.isConnected || (r.width > 0 && (r.right <= left || r.left >= right)) || (r.height > 0 && (r.bottom <= top || r.top >= bottom))) {
         dismiss(); return;
       }
       if (tip!.hidden) return;
@@ -87,13 +88,14 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     function focus() {
       focused = true;
       // A touch-generated focus does not bypass the long-press intent delay.
-      if (touch !== null) return;
+      if (touch !== null || touchFocus) return;
       dismissed = false; show();
     }
     function blur() { focused = false; dismiss(); }
     function down(e: PointerEvent) {
       if (!coarse(e) || e.button !== 0) return;
-      touch = e.pointerId; held = false; dismissed = false;
+      touch = e.pointerId; held = false; dismissed = false; touchFocus = true;
+      window.clearTimeout(focusReset);
       tip!.hidden = true;
       startDwell();
     }
@@ -108,6 +110,8 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       if (touch !== e.pointerId) return;
       touch = null;
       if (!held) cancelDwell();
+      // A native touch tap can focus the button on pointerup/click; it is not keyboard focus.
+      focusReset = window.setTimeout(() => { touchFocus = false; }, 0);
     }
     function outside(e: PointerEvent) {
       if (e.target instanceof Node && !el!.contains(e.target) && !tip!.contains(e.target)) dismiss();
@@ -127,8 +131,11 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     window.visualViewport?.addEventListener("resize", place); window.visualViewport?.addEventListener("scroll", place);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
     observer?.observe(el); observer?.observe(tip);
-    const removal = new MutationObserver(() => { if (!el.isConnected) dismiss(); });
+    const removal = new MutationObserver(() => { if (!el.isConnected) dismiss(); else place(); });
     removal.observe(document.body, { childList: true, subtree: true });
+    removal.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "dir"] });
+    const leaf = el.closest(".ax-draft")?.querySelector(".ax-leaf");
+    if (leaf) removal.observe(leaf, { attributes: true, attributeFilter: ["data-theme", "data-profile"] });
     reposition.current = place;
     if (focused) show(); else place();
     return () => {

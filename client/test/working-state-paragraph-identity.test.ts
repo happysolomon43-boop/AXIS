@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { getWorkingState } from "../src/api/endpoints";
 import { mockApi } from "./helpers";
 import { equal, changed, uid } from "./paragraphIdentityFixtures";
@@ -28,4 +28,20 @@ test("AXB-0139 AC1 validates canonical coherent hints and rejects malformed succ
  const ambiguous=structuredClone(changed);ambiguous.draft!.blocks[2].block_uid=uid(3);
  mockApi([{method:"GET",path:chapterPath+"/working-state",reply:{status:200,body:ambiguous}}]);
  await expect(getWorkingState(A)).rejects.toMatchObject({status:200,code:"unreadable",details:null});
+});
+
+test("coherent hint transport is exactly one HTTPS request, and preexisting errors propagate",async()=>{
+ const origin="https://axis.example";
+ const resource=chapterPath.replace(/^\/api/,"");
+ try {
+  vi.stubEnv("VITE_AXIS_SERVICE_ORIGIN",origin);
+  const api=mockApi([{method:"GET",path:origin+resource+"/working-state",reply:{status:200,body:equal}}]);
+  expect(await getWorkingState(A)).toEqual(equal);
+  expect(api.calls.map(c=>[c.method,c.path,c.body])).toEqual([["GET",origin+resource+"/working-state",undefined]]);
+  for(const [status,code] of [[401,"auth_required"],[404,"not_found"],[500,"internal"],[0,"network"]] as const){
+   const details=null;
+   const next=mockApi([{method:"GET",path:origin+resource+"/working-state",reply:status===0?"network":{status,body:{error:{code,message:"fixture",details}}}}]);
+   await expect(getWorkingState(A)).rejects.toMatchObject({status,code,details});expect(next.calls).toHaveLength(1);
+  }
+ }finally{vi.unstubAllEnvs();vi.unstubAllGlobals();}
 });
