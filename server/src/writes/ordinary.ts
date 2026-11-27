@@ -3,6 +3,7 @@ import { chapterHasVersion, commitChapterRow, readActiveVersionId, type ChapterR
 import { checkContent, checkHintsText, invalidHints, invalidParentVersion } from "../corpus/validate.js";
 import { AppError } from "../errors.js";
 import { commitChapterWrite, readWriteBase } from "./receipts.js";
+import { insertCheckpointLabel } from "../named-cuts/checkpoint-label.js";
 
 export type ChapterWriteBody = {
   request_id: string;
@@ -74,8 +75,9 @@ export function writeChapter(
         reason, current_version: current.id, current_revision: current.revision,
       });
     }
-    // A new Keep mine checkpoint requires an approved lineage and naming rule.
-    // An existing exact immutable copy can already preserve this text-only head.
+    // Keep the competing text under its own parent before the chosen version
+    // clears the head. An existing byte-exact immutable copy needs no new cut.
+    let checkpointVersionId: string | null = null;
     if (operation === "keep_mine" && current.head_content !== null &&
         current.head_content !== current.content && current.head_content !== input.content) {
       const { rowCount } = await client.query(
@@ -84,12 +86,21 @@ export function writeChapter(
         [chapter.id, current.head_content],
       );
       if (!rowCount) {
-        throw new AppError(409, "write_conflict", "The other Draft has been kept", { reason: "draft_preserved" });
+        const { ids: [id] } = await commitChapterRow(
+          client, actor, chapter, "chapter.keep_mine.checkpoint", {
+            kind: "chapter_version", chapter_id: chapter.id, content: current.head_content,
+            source: "checkpoint", parent_version: current.id, activate: false,
+          },
+        );
+        if (!id) throw new Error("Keep mine checkpoint returned no version ID");
+        await insertCheckpointLabel(client, chapter, id, "keep_mine");
+        checkpointVersionId = id;
       }
     }
     const active = await readActiveVersionId(client, chapter.id);
     const source = operation === "send" ? (active === null ? "send" : "reupload") : input.source ?? "draft_edit";
     const versionId = await writeVersion(client, actor, chapter, { ...input, parent_version: parent }, source);
-    return { version_id: versionId, active_version_id: operation === "send" ? versionId : active };
+    return { version_id: versionId, active_version_id: operation === "send" ? versionId : active,
+      checkpoint_version_id: checkpointVersionId };
   });
 }

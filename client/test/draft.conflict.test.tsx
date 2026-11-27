@@ -49,7 +49,7 @@ test("AC2 keeps the local text through Save and retains the conflict after a fai
   expect(ui.calls.filter(({ method }) => method === "POST")).toEqual([expect.objectContaining({
     path: versionPath, body: expect.objectContaining({ content: edited, parent_version: b, base_version: b, base_revision: 1 }),
   })]);
-  await act(async () => { write.resolve(reply(writtenC(null), 201)); });
+  await act(async () => { write.resolve(reply({ ...writtenC(null), checkpoint_version_id: d }, 201)); });
   expect(ui.root).toHaveAttribute("data-state", "clean");
   expect(ui.root).toHaveAttribute("data-autosave", "idle");
   expect(ui.part("conflict")).toBeNull();

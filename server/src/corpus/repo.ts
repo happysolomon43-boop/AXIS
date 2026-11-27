@@ -221,7 +221,7 @@ export async function commitChapterRow(
   client: PoolClient,
   actorId: string,
   chapter: ChapterRef,
-  op: "chapter.version.append" | "chapter.send" | "chapter.activate",
+  op: "chapter.version.append" | "chapter.send" | "chapter.activate" | "chapter.keep_mine.checkpoint",
   row: object,
 ): Promise<{ l_seq: number; ids: string[] }> {
   try {

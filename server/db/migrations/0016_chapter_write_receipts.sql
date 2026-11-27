@@ -13,7 +13,7 @@ CREATE TABLE chapter_write_receipts (
     FOREIGN KEY (chapter_id, source_version_id) REFERENCES chapter_versions(chapter_id, id) ON DELETE RESTRICT,
     FOREIGN KEY (chapter_id, checkpoint_version_id) REFERENCES chapter_versions(chapter_id, id) ON DELETE RESTRICT,
     CHECK ((operation = 'restore') = (source_version_id IS NOT NULL)),
-    CHECK (checkpoint_version_id IS NULL OR (operation = 'restore' AND checkpoint_version_id <> version_id)),
+    CHECK (checkpoint_version_id IS NULL OR (operation IN ('restore', 'keep_mine') AND checkpoint_version_id <> version_id)),
     CHECK (operation <> 'send' OR active_version_id IS NOT DISTINCT FROM version_id)
 );
 COMMENT ON COLUMN chapter_write_receipts.request_hash IS 'Content-derived operation fingerprint; retain for future erase handling.';

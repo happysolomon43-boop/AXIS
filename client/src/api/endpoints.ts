@@ -105,7 +105,10 @@ function matchesWrite(value: unknown, expected: ExpectedWrite): value is WriteRe
       && (checkpoint_version_id === null || (versionId(checkpoint_version_id)
         && checkpoint_version_id !== source_version_id && checkpoint_version_id === version.parent_version));
   }
-  if (source_version_id !== null || checkpoint_version_id !== null) return false;
+  if (source_version_id !== null) return false;
+  if (checkpoint_version_id !== null && (expected.operation !== "keep_mine"
+    || !versionId(checkpoint_version_id) || checkpoint_version_id === version.id
+    || checkpoint_version_id === version.parent_version || checkpoint_version_id === active_version_id)) return false;
   if (expected.operation === "save" && (!validSync(value.sync) || value.sync.state !== current.sync.state
       || value.sync.same !== current.sync.same)) return false;
   return expected.operation === "send"

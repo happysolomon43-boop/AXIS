@@ -49,7 +49,8 @@ async function seedCheckpoints() {
     await pool.query("UPDATE books SET status = 'released' WHERE id = $1", [released.bookId]);
     const c2 = await seedVersionAs(pool, released.seriesId, y, "Text kept in a released Book.", "checkpoint", "chapter.checkpoint");
     const odd = await seedVersionAs(pool, released.seriesId, y, "Not from Restore.", "checkpoint", "chapter.version.append");
-    return { x, c1, c2, unnamed: [a.version.id, r, b, odd] };
+    const conflict = await seedVersionAs(pool, released.seriesId, y, "Other draft.", "checkpoint", "chapter.keep_mine.checkpoint");
+    return { x, c1, c2, unnamed: [a.version.id, r, b, odd, conflict] };
   } finally {
     await drafting.app.close();
     await released.app.close();

@@ -140,30 +140,102 @@ test("replays one operation by UUID, with its historical activation and separate
   expect(await rows("chapter_write_receipts")).toHaveLength(2);
 });
 
-test("refuses unsafe Keep mine and retains the historical parent after an explicit safe choice", async () => {
+test("Keep mine guards the observed head and preserves both parents, exact competing text and Book activation", async () => {
   const other = await f.write(chapter, "Other version.", "send");
   const local = { ...writeGuard(other.version.id), parent_version: base, content: "My manuscript." };
-  expect((await put("Other working text.", other.version.id)).statusCode).toBe(200);
+  const competing = "  Other working text.\n";
+  expect((await put(competing, other.version.id)).statusCode).toBe(200);
   const before = await state(pool);
   const missing = await post("versions", { content: local.content, parent_version: base });
   expect(missing.statusCode).toBe(400);
   expect((await post("send", { ...local, base_revision: "1" })).statusCode).toBe(400);
   expect((await post("versions", { ...local, base_version: base, base_revision: 1 })).json().error.details.reason).toBe("version");
   expect((await post("keep-mine", local)).json().error.details.reason).toBe("revision");
-  const refused = await post("keep-mine", { ...local, base_revision: 1 });
-  expect(refused.statusCode).toBe(409);
-  expect(refused.json().error.details).toEqual({ reason: "draft_preserved" });
   expect(await state(pool)).toEqual(before);
 
-  expect((await put("Other version.", other.version.id, 1)).statusCode).toBe(200);
+  // A second autosave after the conflict observation must not be silently cleared.
+  expect((await put(competing + "More.", other.version.id, 1)).statusCode).toBe(200);
+  const advanced = await state(pool);
   expect((await post("keep-mine", { ...local, base_revision: 1 })).json().error.details.reason).toBe("revision");
-  const safe = await post("keep-mine", { ...local, base_revision: 2 });
-  expect(safe.statusCode).toBe(201);
-  expect(safe.json()).toMatchObject({
-    operation: "keep_mine", version: { parent_version: base, l_seq: 3 },
-    active_version_id: other.version.id, checkpoint_version_id: null,
+  expect(await state(pool)).toEqual(advanced);
+  const body = { ...local, base_revision: 2 };
+  const result = await post("keep-mine", body);
+  expect(result.statusCode, result.body).toBe(201);
+  const written = result.json<WriteResult>();
+  expect(written).toMatchObject({
+    operation: "keep_mine", version: { parent_version: base, source: "draft_edit", l_seq: 4 },
+    active_version_id: other.version.id, source_version_id: null,
+    checkpoint_version_id: expect.any(String),
+    current: { version_id: written.version.id, revision: 0, active_version_id: other.version.id },
   });
+  const after = await state(pool);
+  expect(after.versions).toHaveLength(before.versions.length + 2);
+  expect(after.versions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: written.checkpoint_version_id, chapter_id: chapter,
+      content: competing + "More.", parent_version: other.version.id, source: "checkpoint" }),
+    expect.objectContaining({ id: written.version.id, content: local.content, parent_version: base }),
+  ]));
+  expect(after.ledger.slice(-2)).toMatchObject([
+    { op: "chapter.keep_mine.checkpoint", target_ids: [written.checkpoint_version_id] },
+    { op: "chapter.version.append", target_ids: [written.version.id] },
+  ]);
+  expect(after.active).toEqual(before.active);
+  expect(after.heads).toEqual([]);
+  expect(await labels(pool)).toMatchObject([{ version_id: written.checkpoint_version_id, label: "Before conflict resolution" }]);
+  expect(await rows("snapshot_label_lifecycles")).toMatchObject([{ version_id: written.checkpoint_version_id }]);
+  expect((await f.history(chapter)).json().versions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: written.checkpoint_version_id, source: "checkpoint",
+      snapshot: expect.objectContaining({ name: "Before conflict resolution" }), can_name_snapshot: false }),
+  ]));
+  expect((await receipt(body.request_id)).json()).toEqual({ receipt: written });
+  const replay = await post("keep-mine", body);
+  expect(replay.statusCode).toBe(200);
+  expect(replay.json()).toEqual(written);
+  expect(await state(pool)).toEqual(after);
+});
+
+test.each(["Other version.", "My manuscript.", "River."])("Keep mine needs no extra checkpoint for already preserved text: %s", async (content) => {
+  const other = await f.write(chapter, "Other version.", "send");
+  expect((await put(content, other.version.id)).statusCode).toBe(200);
+  const before = await state(pool);
+  const result = await post("keep-mine", { ...writeGuard(other.version.id, 1), parent_version: base, content: "My manuscript." });
+  expect(result.statusCode, result.body).toBe(201);
+  expect(result.json()).toMatchObject({ operation: "keep_mine", checkpoint_version_id: null,
+    version: { parent_version: base, l_seq: 3 }, active_version_id: other.version.id });
+  expect((await state(pool)).versions).toHaveLength(before.versions.length + 1);
   expect(await rows("chapter_active")).toEqual(before.active);
+  expect(await labels(pool)).toEqual([]);
+});
+
+test.each(["named_cuts", "chapter_write_receipts"])("Keep mine rolls back both versions and the competing head if %s fails", async (table) => {
+  const other = await f.write(chapter, "Other version.", "send");
+  expect((await put("Distinct competing draft.", other.version.id)).statusCode).toBe(200);
+  const before = await state(pool);
+  const beforeReceipts = await rows("chapter_write_receipts");
+  const beforeBlocks = await rows("blocks");
+  const beforeScenes = await rows("scenes");
+  const body = { ...writeGuard(other.version.id, 1), parent_version: base, content: "My manuscript." };
+  await pool.query(`
+    CREATE FUNCTION refuse_keep_mine() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'fixture refusal'; END; $$;
+    CREATE TRIGGER refuse_keep_mine BEFORE INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION refuse_keep_mine();
+  `);
+  try {
+    const failed = await post("keep-mine", body);
+    expect(failed.statusCode).toBe(500);
+    expect(await state(pool)).toEqual(before);
+    expect(await rows("blocks")).toEqual(beforeBlocks);
+    expect(await rows("scenes")).toEqual(beforeScenes);
+    expect(await rows("chapter_write_receipts")).toEqual(beforeReceipts);
+    expect(await labels(pool)).toEqual([]);
+    expect(await rows("snapshot_label_lifecycles")).toEqual([]);
+    expect((await receipt(body.request_id)).json()).toEqual({ receipt: null });
+  } finally {
+    await pool.query(`DROP TRIGGER refuse_keep_mine ON ${table}; DROP FUNCTION refuse_keep_mine()`);
+  }
+  const recovered = await post("keep-mine", body);
+  expect(recovered.statusCode, recovered.body).toBe(201);
+  expect(recovered.json().checkpoint_version_id).not.toBeNull();
 });
 
 test("Restore receipts bind exact source and checkpoint identity, even for the same folded text", async () => {

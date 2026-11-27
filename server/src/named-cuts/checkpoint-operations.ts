@@ -1,4 +1,4 @@
-export const CHECKPOINT_OPERATIONS = { restore: 'Before restore' } as const;
+export const CHECKPOINT_OPERATIONS = { restore: 'Before restore', keep_mine: 'Before conflict resolution' } as const;
 
 export type CheckpointOperation = keyof typeof CHECKPOINT_OPERATIONS;
 
