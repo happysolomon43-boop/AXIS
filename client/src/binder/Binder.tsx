@@ -1,6 +1,8 @@
 import "./binder.css";
 import "../styles/binder-sync.css";
 import "./sync-layout.css";
+import "../styles/binder-menu.css";
+import "../styles/binder-pullback-check.css";
 import { useEffect, useRef } from "react";
 import type { SeriesTree } from "../api/types";
 import { BookGroup, PullBackContext, usePullBackController } from "./BookGroup";

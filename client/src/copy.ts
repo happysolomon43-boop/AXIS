@@ -24,6 +24,13 @@ export const copy = {
   "binder.pullBack": "Pull back",
   "binder.pullingBack": "Pulling back...",
   "binder.pullBackPrefix": "Pull back",
+  "binder.menuPrefix": "Chapter menu for ",
+  "binder.menuOpen": "Open chapter",
+  "binder.menuPullBack": "Pull back to Draft",
+  "binder.pullBackCheck": "Check again",
+  "binder.pullBackDivergent": "Your draft and Book version differ. Both have been kept.",
+  "binder.pullBackReleased": "This Book is released. Its chapter has not been changed.",
+  "binder.pullBackChanged": "The Book version changed. Check the chapter before trying again.",
   "binder.pullBackFailed": "The chapter could not be pulled back.",
   "binder.chapterName": (position: number, title: string | null) =>
     title === null ? `Chapter ${position}` : `Chapter ${position}: ${title}`,
