@@ -35,14 +35,14 @@ const expectedCss = `
 .ax-binder-chapter { position: relative; }
 .ax-binder-chapter > span { position: relative; z-index: 1; pointer-events: none; }
 [data-part="chapter-open"] { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; color: inherit; font: inherit; cursor: pointer; appearance: none; }
-[data-part="chapter-open"]:hover:not([aria-disabled="true"]):not([aria-current="true"]) { background-color: var(--ax-tint-hover); }
+ .ax-binder-chapter:not([data-selected="true"]) > [data-part="chapter-open"]:hover:not([aria-disabled="true"]):not([aria-current="true"]) { background-color: var(--ax-tint-hover); }
 [data-part="chapter-open"]:active:not([aria-disabled="true"]):not([aria-current="true"]) { background-color: var(--ax-tint-pressed); }
 [data-part="chapter-open"]:focus-visible { outline: 2px solid var(--ax-color-focus); outline-offset: -2px; box-shadow: none; }
-[data-part="chapter-open"][aria-current="true"] { background-color: var(--ax-color-pencil-tint); opacity: 1; }
+[data-part="chapter-open"][aria-current="true"] { opacity: 1; }
 [data-part="chapter-open"][aria-disabled="true"] { opacity: 1; }
-[data-part="current-mark"] { position: absolute; inset-inline: 0; inset-block-end: 0; block-size: 2px; background-color: var(--ax-color-text-primary); }
+[data-part="current-mark"] { display: none; }
 .ax-binder-chapter:has([data-part="chapter-open"][aria-current="true"]) .ax-binder-chapter-title { font-weight: 600; }
-.ax-binder-chapter:has([data-part="chapter-open"][aria-disabled="true"]:not([aria-current="true"])) { opacity: var(--ax-opacity-disabled); }
+.ax-binder-chapter:has([data-part="chapter-open"][aria-disabled="true"]:not([aria-current="true"])) > span:not(.ax-binder__selected-rule) { opacity: var(--ax-opacity-disabled); }
 [data-part="add-chapter"] { margin: var(--ax-space-3); min-inline-size: var(--ax-size-button-wide); }
 [data-state="ready"] > [data-part="add-failure"] { margin: var(--ax-space-3); font-size: var(--ax-type-small-size); line-height: var(--ax-type-small-lh); color: var(--ax-color-text-primary); }
 `;
@@ -105,7 +105,8 @@ test("AXB-0074 AC2 uses the specified drawing rules and meets every contrast flo
   expect(binderSource).toContain('import "./sync-layout.css";');
   expect(syncLayoutCss).toContain("fit-content(45%)");
   expect(syncLayoutCss).toContain("grid-row: 2;");
-  expect(syncLayoutCss).toContain("> :not(.ax-binder__pullback)");
+  expect(syncLayoutCss).toContain(".ax-binder__menu-trigger");
+  expect(syncLayoutCss).toContain(".ax-binder__selected-rule");
   expect(syncLayoutCss).toContain("transition: none;");
 
   const themes = {
