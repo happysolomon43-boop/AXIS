@@ -21,7 +21,7 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     const cancelDwell = () => { window.clearTimeout(dwell); dwell = undefined; };
     const cancelGrace = () => { window.clearTimeout(grace); grace = undefined; };
     function dismiss() {
-      cancelDwell(); cancelGrace(); touch = null; held = false; dismissed = true;
+      cancelDwell(); cancelGrace(); touch = null; held = false; dismissed = true; triggerHover = false; tipHover = false;
       tip!.hidden = true;
     }
     function place() {

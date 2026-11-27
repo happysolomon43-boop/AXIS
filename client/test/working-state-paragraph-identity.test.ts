@@ -9,7 +9,7 @@ test("AXB-0139 AC1 validates canonical coherent hints and rejects malformed succ
   expect(await getWorkingState(A)).toEqual(fixture);expect(api.calls).toHaveLength(1);
  }
  const edits:Array<(f:typeof equal)=>void>=[
-  f=>{delete (f.draft!.blocks[1] as Partial<typeof f.draft.blocks[number]>).block_uid;},
+  f=>{delete (f.draft!.blocks[1] as Partial<import("../src/api/types").WorkingDraftBlock>).block_uid;},
   f=>{Object.assign(f.draft!.blocks[1],{block_uid:7});},
   f=>{f.draft!.blocks[1].block_uid="local_p_1";},
   f=>{f.draft!.blocks[2].block_uid=uid(2);},

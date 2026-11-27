@@ -78,7 +78,7 @@ function validHead(value: unknown): value is WorkingDraftHead {
     && versionId(value.base_version) && integer(value.revision, 1, 2147483647)
     && typeof value.content === "string" && orderedBlocks(value.blocks)
     && value.blocks.every(b => exactObject(b, ["ordinal", "kind", "text", "block_uid"])
-      && (b.block_uid === null || (b.kind === "paragraph" && matches(b.block_uid, /^b_[0-9a-f]{12}$/, 14))));
+      && ("block_uid" in b && (b.block_uid === null || (b.kind === "paragraph" && matches(b.block_uid, /^b_[0-9a-f]{12}$/, 14)))));
 }
 function paragraphCounts(blocks: readonly VersionBlock[]) {
   const counts = new Map<string, number>();
