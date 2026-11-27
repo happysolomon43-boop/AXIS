@@ -1,14 +1,14 @@
 import { Schema, type Node } from "prosemirror-model";
-import type { BlockRow } from "../api/types";
+import type { BlockRow, DraftBlock, WorkingDraftBlock } from "../api/types";
 import { copy } from "../copy";
 
-export type EditorBlock = { kind: "paragraph" | "heading" | "scene_break"; text: string };
+export type EditorBlock = { kind: "paragraph" | "heading" | "scene_break"; text: string; block_uid?: string | null };
 
 export const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: {
-      group: "block", content: "text*", whitespace: "pre",
+      group: "block", content: "text*", whitespace: "pre", attrs: { block_uid: { default: null } },
       parseDOM: [{ tag: "p" }],
       toDOM: () => ["p", { "data-block": "paragraph" }, 0],
     },
@@ -38,13 +38,19 @@ export function serializeBlocks(blocks: EditorBlock[]): string {
   return pieces.join("\n\n");
 }
 
-export function blocksFromServed(blocks: BlockRow[]): EditorBlock[] {
-  return blocks.map(({ kind, text }) => ({ kind, text }));
+export function canonicalParagraphUid(value: unknown): value is string {
+  return typeof value === "string" && value.length === 14 && /^b_[0-9a-f]{12}$/.test(value);
+}
+
+export function blocksFromServed(blocks: readonly (BlockRow | WorkingDraftBlock | DraftBlock)[]): EditorBlock[] {
+  return blocks.map(b => b.kind === "paragraph"
+    ? { kind: b.kind, text: b.text, block_uid: "block_uid" in b && canonicalParagraphUid(b.block_uid) ? b.block_uid : null }
+    : { kind: b.kind, text: b.text });
 }
 
 export function blocksToDoc(blocks: EditorBlock[]): Node {
-  return schema.nodes.doc.create(null, blocks.length === 0 ? [schema.nodes.paragraph.create()] : blocks.map(({ kind, text }) =>
-    kind === "scene_break" ? schema.nodes.scene_break.create({ text }) : schema.nodes[kind].create(null, text ? schema.text(text) : null)));
+  return schema.nodes.doc.create(null, blocks.length === 0 ? [schema.nodes.paragraph.create()] : blocks.map(({ kind, text, block_uid }) =>
+    kind === "scene_break" ? schema.nodes.scene_break.create({ text }) : schema.nodes[kind].create(kind === "paragraph" ? { block_uid: canonicalParagraphUid(block_uid) ? block_uid : null } : null, text ? schema.text(text) : null)));
 }
 
 export function docToBlocks(doc: Node): EditorBlock[] {
@@ -54,4 +60,16 @@ export function docToBlocks(doc: Node): EditorBlock[] {
     blocks.push({ kind, text: kind === "scene_break" ? node.attrs.text : node.textContent });
   });
   return blocks;
+}
+
+export function sameContentDoc(a: Node, b: Node): boolean {
+  if (a.childCount !== b.childCount) return false;
+  for (let i = 0; i < a.childCount; i++) {
+    const x = a.child(i), y = b.child(i);
+    if (x.type !== y.type) return false;
+    if (x.type.name === "scene_break") { if (x.attrs.text !== y.attrs.text) return false; }
+    else if (x.type.name === "paragraph" || x.type.name === "heading") { if (x.textContent !== y.textContent) return false; }
+    else return false;
+  }
+  return true;
 }

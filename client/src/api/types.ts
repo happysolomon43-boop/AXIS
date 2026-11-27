@@ -102,7 +102,9 @@ export type WriteResult = VersionWritten & {
 export type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
 export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync?: ChapterSync };
-export type WorkingState = ChapterDetail & { draft: DraftHead | null; sync: ChapterSync };
+export type WorkingDraftBlock = DraftBlock & { block_uid: string | null };
+export type WorkingDraftHead = Omit<DraftHead, "blocks"> & { blocks: WorkingDraftBlock[] };
+export type WorkingState = ChapterDetail & { draft: WorkingDraftHead | null; sync: ChapterSync };
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync?: ChapterSync };
 
 export type VersionBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;

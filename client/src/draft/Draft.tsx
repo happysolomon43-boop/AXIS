@@ -12,7 +12,7 @@ import type { CaptureRequest, CaptureResult, ChapterSync, WorkingState, WriteOpe
 import { syncChip } from "../binder/format";
 import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
-import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, type EditorBlock } from "../editor/model";
+import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, sameContentDoc, type EditorBlock } from "../editor/model";
 import { fireAt } from "./autosave";
 import { revision as validRevision, versionId } from "../api/validation";
 
@@ -73,8 +73,8 @@ function hasDetail(error: ApiError, path: string, message?: string) {
   });
 }
 
-function dirty(s: Ready) { return !s.doc.eq(s.baselineDoc); }
-function kept(s: Ready) { return s.persistedDoc !== null && s.doc.eq(s.persistedDoc); }
+function dirty(s: Ready) { return !sameContentDoc(s.doc, s.baselineDoc); }
+function kept(s: Ready) { return s.persistedDoc !== null && sameContentDoc(s.doc, s.persistedDoc); }
 function due(s: Ready) { return s.persistedDoc === null ? dirty(s) : !kept(s); }
 function locked(s: Snapshot) {
   return s.state === "ready" && (s.capturing || s.phase !== null || (dirty(s) && !kept(s)));
@@ -112,7 +112,7 @@ function fromRead(detail: WorkingState): Ready {
     throw new Error("Draft and chapter versions do not match");
   }
   const served = blocksFromServed(detail.blocks);
-  const blocks = draft === null ? served : draft.blocks.map(({ kind, text }) => ({ kind, text }));
+  const blocks = draft === null ? served : blocksFromServed(draft.blocks);
   const baselineDoc = blocksToDoc(served);
   const doc = draft === null ? baselineDoc : blocksToDoc(blocks);
   return {
@@ -546,7 +546,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     if (!mounted.current || !view || s.state !== "ready" || dirty(s) || s.phase !== null ||
         s.stopped || s.capturing || s.autosaveInFlight || ordinary.current.active !== 0) return;
     const doc = view.state.doc;
-    const raw = s.persistedDoc && s.doc.eq(s.persistedDoc) && s.persistedRaw !== null ? s.persistedRaw : s.baselineRaw;
+    const raw = s.persistedDoc && sameContentDoc(s.doc, s.persistedDoc) && s.persistedRaw !== null ? s.persistedRaw : s.baselineRaw;
     const original = s.doc, number = generation.current, checkGeneration = baseGeneration.current;
     const activity = ordinary.current;
     const currentAttempt = () => {
@@ -556,7 +556,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
         latestSyncToken.current === token && ordinary.current === activity && activity.active === 0 &&
         live.state === "ready" && live.doc === original && !dirty(live) && live.phase === null &&
         !live.stopped && !live.capturing && !live.autosaveInFlight &&
-        (live.persistedDoc && live.doc.eq(live.persistedDoc) && live.persistedRaw !== null ? live.persistedRaw : live.baselineRaw) === raw;
+        (live.persistedDoc && sameContentDoc(live.doc, live.persistedDoc) && live.persistedRaw !== null ? live.persistedRaw : live.baselineRaw) === raw;
     };
     const book = s.bookId;
     async function verifyBase() {
@@ -685,8 +685,8 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     let requestId: string;
     try { requestId=globalThis.crypto.randomUUID(); }
     catch { captureFailure(a,copy["draft.snapshot.startFailed"]); return; }
-    const content=confirmed.persistedDoc && a.doc.eq(confirmed.persistedDoc) && confirmed.persistedRaw !== null ? confirmed.persistedRaw :
-      a.doc.eq(confirmed.baselineDoc) ? confirmed.baselineRaw : serializeBlocks(docToBlocks(a.doc));
+    const content=confirmed.persistedDoc && sameContentDoc(a.doc, confirmed.persistedDoc) && confirmed.persistedRaw !== null ? confirmed.persistedRaw :
+      sameContentDoc(a.doc, confirmed.baselineDoc) ? confirmed.baselineRaw : serializeBlocks(docToBlocks(a.doc));
     a.body={ request_id:requestId, content, base_version:confirmed.loadedVersionId, base_revision:confirmed.headRevision, ...(a.name === undefined ? {} : { name:a.name }) };
     let result: CaptureResult | null;
     try { result=await captureSnapshot(chapterId,a.body); }
@@ -729,6 +729,13 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     if (s.state !== "ready" || busy(s)) return;
     onDocumentChange?.();
     const now = Date.now();
+    if (sameContentDoc(s.doc, doc)) {
+      // Keep actual operation generations but do not reset manuscript autosave clocks or status.
+      const next = { ...s, doc };
+      current.current = next;
+      setSnapshot(next);
+      return;
+    }
     const next = { ...s, doc, lastChangeAt: now, outcome: null };
     update(!due(s) && due(next) ? { ...next, dirtySince: now } : next);
   }
@@ -866,6 +873,13 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
       <div className="ax-draft-page" data-part="page">
         <Editor key={s.editorKey} blocks={s.blocks} editable={!isBusy} onDocChange={docChange} onReady={(view) => {
           editor.current = view;
+          const loaded = current.current;
+          if (loaded.state === "ready" && loaded.editorKey === s.editorKey) {
+            const next = { ...loaded, doc: view.state.doc };
+            current.current = next;
+            ordinarySnapshot.current = next;
+            setSnapshot(next);
+          }
           if (focusOnReady.current) view.focus();
           focusOnReady.current = true;
           callbacks.current.onEditorReady?.(view);

@@ -10,7 +10,19 @@ export function workingState(chapter: ChapterDetail, head?: Pick<DraftDetail, "d
     ? chapter.active_version_id ?? chapter.version?.id ?? null : chapter.active_version_id;
   const sync: ChapterSync = head?.sync ?? (active_version_id === null ? { state: "draft_only", same: false }
     : active_version_id === chapter.version?.id ? { state: "in_book", same: true } : { state: "edited", same: false });
-  return { ...chapter, active_version_id, draft: head?.draft ?? null, sync };
+  const raw = head?.draft;
+  const counts = (rows: { kind: string; text: string }[]) => {
+    const map = new Map<string, number>();
+    for (const row of rows) if (row.kind === "paragraph") map.set(row.text, (map.get(row.text) ?? 0) + 1);
+    return map;
+  };
+  const stored = counts(chapter.blocks), headCounts = counts(raw?.blocks ?? []);
+  const draft = raw ? { ...raw, blocks: raw.blocks.map(b => {
+    const match = chapter.blocks.find(s => s.kind === "paragraph" && s.text === b.text &&
+      (raw.content === chapter.version?.content ? s.ordinal === b.ordinal : stored.get(b.text) === 1 && headCounts.get(b.text) === 1));
+    return { ...b, block_uid: b.kind === "paragraph" ? match?.block_uid ?? null : null };
+  }) } : null;
+  return { ...chapter, active_version_id, draft, sync };
 
 }
 
