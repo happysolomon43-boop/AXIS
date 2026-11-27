@@ -8,7 +8,7 @@ import { corpusCounts, seedSeries } from "./seed.js";
 
 const pool = makePool();
 const alice = { "x-axis-user": "usr_alice" };
-const revised = { state: "being_revised", same: false };
+const revised = { state: "being_revised", same: true };
 
 async function waitForWriters(expected: number) {
   const deadline = Date.now() + 2000;
@@ -70,21 +70,34 @@ test("AXB-0080 AC2 autosave replies reflect its place in either Series lock orde
       const [one, two] = await Promise.all(pending);
       const autosave = putFirst ? one! : two!;
       const pull = putFirst ? two! : one!;
-      expect(autosave.statusCode, autosave.body).toBe(200);
-      expect(pull.statusCode, pull.body).toBe(200);
-      expect(autosave.json<DraftWritten>().sync).toEqual(putFirst ? { state: "edited", same: false } : revised);
-      expect(pull.json().active_version_id).toBe(active);
+      const edited = { state: "edited", same: false };
+      if (putFirst) {
+        expect(autosave.statusCode, autosave.body).toBe(200);
+        expect(autosave.json<DraftWritten>().sync).toEqual(edited);
+        expect(pull.statusCode, pull.body).toBe(409);
+        expect(pull.json().error.details.reason).toBe("base_choice_required");
+      } else {
+        expect(pull.statusCode, pull.body).toBe(200);
+        expect(pull.json().active_version_id).toBe(active);
+        expect(autosave.statusCode, autosave.body).toBe(409);
+        expect(autosave.json().error.details.reason).toBe("version");
+      }
       const draft = await app.inject({ method: "GET", url: path + "/draft", headers: alice });
       const list = await app.inject({ method: "GET", url: listPath, headers: alice });
       expect(draft.statusCode).toBe(200);
       expect(list.statusCode).toBe(200);
-      expect(draft.json<DraftDetail>().sync).toEqual(revised);
-      expect(list.json<BookChapters>().chapters[0]?.sync).toEqual(revised);
-      expect(await corpusCounts(pool)).toEqual(before);
+      expect(draft.json<DraftDetail>().sync).toEqual(putFirst ? edited : revised);
+      expect(list.json<BookChapters>().chapters[0]?.sync).toEqual(putFirst ? edited : revised);
+      if (putFirst) expect(await corpusCounts(pool)).toEqual(before);
+      else {
+        const after = await corpusCounts(pool);
+        expect(after!.ledger).toBe(before!.ledger + 1);
+        expect((await pool.query("SELECT id FROM chapter_versions WHERE chapter_id = $1 ORDER BY version_no DESC LIMIT 1", [chapter.id])).rows[0]!.id).not.toBe(active);
+      }
       expect((await pool.query("SELECT chapter_id, base_version, content, revision FROM chapter_drafts")).rows)
-        .toEqual([{ chapter_id: chapter.id, base_version: active, content: "abd", revision: 1 }]);
+        .toEqual(putFirst ? [{ chapter_id: chapter.id, base_version: active, content: "abd", revision: 1 }] : []);
       expect((await pool.query("SELECT chapter_id, book_version FROM chapter_pullbacks")).rows)
-        .toEqual([{ chapter_id: chapter.id, book_version: active }]);
+        .toEqual(putFirst ? [] : [{ chapter_id: chapter.id, book_version: active }]);
 
       const activity = await pool.query(
         `SELECT pid FROM pg_stat_activity WHERE datname = current_database()

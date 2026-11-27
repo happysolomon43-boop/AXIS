@@ -54,6 +54,8 @@ async function sent() {
 async function mark(id: string) {
   const reply = await app.inject({ method: "POST", url: path(id, "pull-back"), headers: alice });
   expect(reply.statusCode).toBe(200);
+  const { rows } = await pool.query<{ id: string }>("SELECT id FROM chapter_versions WHERE chapter_id = $1 ORDER BY version_no DESC LIMIT 1", [id]);
+  return rows[0]!.id;
 }
 
 function put(id: string, content: string, base_version: string, base_revision: number, headers: Record<string, string> = alice) {
@@ -77,8 +79,12 @@ test("AXB-0077 AC1 PUT serves the hash-based sync state in the write response", 
   const folded = await put(id, "  abc \n", version, 1);
   expect(folded.statusCode).toBe(200);
   expect(folded.json<DraftWritten>().sync).toEqual(inBook);
-  await mark(id);
-  const pulled = await put(id, "abd", version, 2);
+  const refused = await app.inject({ method: "POST", url: path(id, "pull-back"), headers: alice });
+  expect(refused.statusCode).toBe(409);
+  expect(refused.json().error.details.reason).toBe("base_choice_required");
+  expect((await put(id, "abc", version, 2)).statusCode).toBe(200);
+  const inert = await mark(id);
+  const pulled = await put(id, "abd", inert, 0);
   expect(pulled.statusCode).toBe(200);
   expect(pulled.json<DraftWritten>().sync).toEqual(revised);
 
@@ -120,9 +126,9 @@ test("AXB-0077 AC3 only Save adds sync to its version response", async () => {
   };
   const changed = await save(id, version, "abd", edited);
   expect(changed.active_version_id).toBe(version);
-  const same = await save(id, changed.version.id, "abc", inBook);
-  await mark(id);
-  const pulled = await save(id, same.version.id, "abd", revised);
+  await save(id, changed.version.id, "abc", inBook);
+  const inert = await mark(id);
+  const pulled = await save(id, inert, "abd", revised);
   const sentAgain = await write(id, "send", "abd", pulled.version.id);
   expect(sentAgain.statusCode).toBe(201);
   expect(Object.keys(sentAgain.json()).sort()).toEqual(["active_version_id", "chapter", "version"]);
