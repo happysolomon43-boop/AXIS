@@ -36,7 +36,7 @@ test("AXB-0122 AC1 and AC2 negotiate any path before identity, body and SQL", as
   for (const url of ["/series", "/missing"]) for (const names of ["content-type, X-Axis-User", "X-Axis-User, x-axis-user, Content-Type", ["content-type", "X-Axis-User"], undefined]) {
     const response = await app.inject({ method: "OPTIONS", url, headers: {
       origin, "access-control-request-method": "POST", ...(names === undefined ? {} : {"access-control-request-headers": names}),
-    } });
+    } as Record<string,string|string[]> });
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
     expect(response.headers).toMatchObject({
@@ -53,7 +53,7 @@ test("AXB-0122 AC1 and AC2 negotiate any path before identity, body and SQL", as
     { "access-control-request-method": "" }, { "access-control-request-headers": "" },
     { "access-control-request-headers": "x-axis-user," }, { "access-control-request-headers": "authorization" },
   ]) {
-    const response = await app.inject({ method: "OPTIONS", url: "/series", headers: { ...base, ...invalid } });
+    const response = await app.inject({ method: "OPTIONS", url: "/series", headers: { ...base, ...invalid } as Record<string,string|string[]> });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual(denied);
     expect(grantHeaders(response.headers)).toEqual([]);
