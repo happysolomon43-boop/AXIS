@@ -34,3 +34,11 @@ export function BinderGlyph() {
     </svg>
   );
 }
+
+export function OverflowGlyph() {
+  return <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">
+    <rect x="3" y="9" width="2" height="2" />
+    <rect x="9" y="9" width="2" height="2" />
+    <rect x="15" y="9" width="2" height="2" />
+  </svg>;
+}

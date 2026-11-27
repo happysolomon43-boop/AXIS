@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { ApiError, request } from "./http";
 import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export function listSeries(): Promise<SeriesRow[]>;
@@ -87,8 +87,19 @@ export function restoreVersion(chapterId: string, versionId: string): Promise<Re
   return request("POST", `/chapters/${encodeURIComponent(chapterId)}/restore`, { version_id: versionId });
 }
 
-export function pullBackChapter(chapterId: string): Promise<PullBackWritten> {
-  return request("POST", `/chapters/${encodeURIComponent(chapterId)}/pull-back`);
+export async function pullBackChapter(chapterId: string, expectedActiveVersionId?: string): Promise<PullBackWritten> {
+  const path = "/chapters/" + encodeURIComponent(chapterId) + "/pull-back";
+  const result = await request<unknown>("POST", path, expectedActiveVersionId === undefined ? undefined : {expected_active_version_id: expectedActiveVersionId});
+  if (!exactObject(result, ["chapter", "active_version_id"]) ||
+      !exactObject(result.chapter, ["id", "book_id", "order_key"]) ||
+      typeof result.chapter.id !== "string" || !/^ch_[0-9a-f]{12}$/.test(result.chapter.id) || result.chapter.id !== chapterId ||
+      typeof result.chapter.book_id !== "string" || !/^bk_[0-9a-f]{12}$/.test(result.chapter.book_id) ||
+      typeof result.chapter.order_key !== "string" || !/^[0-9]{10}$/.test(result.chapter.order_key) ||
+      typeof result.active_version_id !== "string" || !/^ver_[0-9a-f]{12}$/.test(result.active_version_id) ||
+      (expectedActiveVersionId !== undefined && result.active_version_id !== expectedActiveVersionId)) {
+    throw new ApiError(200, "unreadable");
+  }
+  return {chapter: {id: result.chapter.id, book_id: result.chapter.book_id, order_key: result.chapter.order_key}, active_version_id: result.active_version_id};
 }
 
 export function validNamedSnapshot(value: unknown, chapterId: string, versionId: string): value is NamedSnapshot {
