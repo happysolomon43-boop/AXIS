@@ -76,9 +76,26 @@ await withPreview(async()=>{
   assert.equal(await trigger.getAttribute("aria-disabled"),"true");
   assert.equal(await trigger.getAttribute("aria-describedby"),await tip.getAttribute("id"));
   assert.equal(await tip.isVisible(),false);
-  await trigger.hover();
-  await page.waitForTimeout(300);assert.equal(await tip.isVisible(),false);
-  await tip.waitFor({state:"visible",timeout:1500});
+  // Establish a fresh, unfocused hover; measure real event-to-visibility
+  // time rather than relying on how long a busy CI driver takes to poll.
+  await trigger.focus();await page.keyboard.press("Escape");
+  await part(page,"snapshot-name").focus();await page.mouse.move(1,1);
+  await tip.waitFor({state:"hidden"});
+  await page.evaluate(()=>{
+   const anchor=document.querySelector('[data-part="snapshot"]'),tip=document.getElementById(anchor.getAttribute("aria-describedby"));
+   window.__d19Hover={start:null,end:null};
+   anchor.addEventListener("pointerenter",()=>{window.__d19Hover.start=performance.now();},{once:true});
+   const observer=new MutationObserver(()=>{
+    if(!tip.hidden){window.__d19Hover.end=performance.now();observer.disconnect();}
+   });
+   observer.observe(tip,{attributes:true,attributeFilter:["hidden"]});
+  });
+  const anchorBox=await trigger.boundingBox();
+  await page.mouse.move(anchorBox.x+anchorBox.width/2,anchorBox.y+anchorBox.height/2);
+  await tip.waitFor({state:"visible",timeout:2000});
+  const dwell=await page.evaluate(()=>window.__d19Hover);
+  console.log("D19 native hover dwell:",JSON.stringify(dwell));
+  assert.ok(dwell.start!==null&&dwell.end!==null&&dwell.end-dwell.start>=499,JSON.stringify(dwell));
   await assertGeometry(page,tip);
   // Passing from anchor into the tooltip must preserve visibility across the gap.
   const b=await tip.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);
@@ -144,8 +161,18 @@ await withPreview(async()=>{
   const send=(type,points)=>cdp.send("Input.dispatchTouchEvent",{type,touchPoints:points});
   await send("touchStart",[point]);await mobile.waitForTimeout(150);await send("touchEnd",[]);
   await mobile.waitForTimeout(550);assert.equal(await tt.isVisible(),false,"short touch showed tooltip");
-  await send("touchStart",[point]);await mobile.waitForTimeout(300);assert.equal(await tt.isVisible(),false);
-  await tt.waitFor({state:"visible",timeout:1500});await send("touchEnd",[]);
+  await mobile.evaluate(()=>{
+   const anchor=document.querySelector('[data-part="snapshot"]'),tip=document.getElementById(anchor.getAttribute("aria-describedby"));
+   window.__d19Touch={start:null,end:null};
+   anchor.addEventListener("pointerdown",()=>{window.__d19Touch.start=performance.now();},{once:true});
+   const observer=new MutationObserver(()=>{if(!tip.hidden){window.__d19Touch.end=performance.now();observer.disconnect();}});
+   observer.observe(tip,{attributes:true,attributeFilter:["hidden"]});
+  });
+  await send("touchStart",[point]);await tt.waitFor({state:"visible",timeout:2000});
+  const touchDwell=await mobile.evaluate(()=>window.__d19Touch);
+  console.log("D19 native long-press dwell:",JSON.stringify(touchDwell));
+  assert.ok(touchDwell.start!==null&&touchDwell.end!==null&&touchDwell.end-touchDwell.start>=499,JSON.stringify(touchDwell));
+  await send("touchEnd",[]);
   await mobile.waitForTimeout(150);assert.equal(await tt.isVisible(),true);
   await mobile.keyboard.press("Escape");await tt.waitFor({state:"hidden"});
   await touch.close();
