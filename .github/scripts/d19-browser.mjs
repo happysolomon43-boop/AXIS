@@ -72,6 +72,7 @@ await withPreview(async()=>{
    await baseline.close();
   }else{await trigger.click();}
   const tip=tooltip(page,reason);
+  await page.mouse.move(1,1);
   assert.equal(await trigger.getAttribute("aria-disabled"),"true");
   assert.equal(await trigger.getAttribute("aria-describedby"),await tip.getAttribute("id"));
   assert.equal(await tip.isVisible(),false);
@@ -83,7 +84,7 @@ await withPreview(async()=>{
   const b=await tip.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);
   await page.waitForTimeout(150);assert.equal(await tip.isVisible(),true);
   await page.mouse.move(1,1);await tip.waitFor({state:"hidden",timeout:1000});
-  await trigger.focus();await tip.waitFor({state:"visible"});assert.equal(await trigger.evaluate(e=>document.activeElement===e),true);
+  await page.keyboard.press("Tab");await trigger.focus();await tip.waitFor({state:"visible"});assert.equal(await trigger.evaluate(e=>document.activeElement===e),true);
   assert.equal(await computed(trigger,"opacity"),"1");assert.equal(await computed(trigger,"outline-width"),"2px");
   await page.keyboard.press("Escape");await tip.waitFor({state:"hidden"});
   await page.waitForTimeout(600);assert.equal(await tip.isVisible(),false);

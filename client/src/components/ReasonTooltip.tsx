@@ -7,9 +7,13 @@ type Props = { anchor: RefObject<HTMLElement>; active: boolean; reason: string; 
 export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props): ReactElement | null {
   const tipRef = useRef<HTMLDivElement>(null);
   const reposition = useRef<() => void>(() => {});
+  const binding = useRef<{ el: HTMLElement; tip: HTMLDivElement; id: string; cleanup: () => void } | null>(null);
   useLayoutEffect(() => {
     const el = anchor.current, tip = tipRef.current;
-    if (!active || !el || !tip) return;
+    if (binding.current && (!active || binding.current.el !== el || binding.current.tip !== tip || binding.current.id !== descriptionId)) {
+      binding.current.cleanup(); binding.current = null;
+    }
+    if (!active || !el || !tip || binding.current) return;
     let dwell: number | undefined, grace: number | undefined;
     let triggerHover = false, tipHover = false, focused = document.activeElement === el;
     let touch: number | null = null, held = false, touchFocus = false;
@@ -80,9 +84,13 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       triggerHover = true; dismissed = false; cancelGrace();
       if (tip!.hidden) startDwell();
     }
+    function cancelTouch() {
+      touch = null; cancelDwell(); window.clearTimeout(focusReset);
+      focusReset = window.setTimeout(() => { touchFocus = false; }, 0);
+    }
     function leave(e: PointerEvent) {
       triggerHover = false;
-      if (touch === e.pointerId && !held) { touch = null; cancelDwell(); }
+      if (touch === e.pointerId && !held) cancelTouch();
       if (!coarse(e)) maybeLeave();
     }
     function focus() {
@@ -103,15 +111,14 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       if (touch !== e.pointerId || held) return;
       const r = el!.getBoundingClientRect();
       if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
-        touch = null; cancelDwell();
+        cancelTouch();
       }
     }
     function up(e: PointerEvent) {
       if (touch !== e.pointerId) return;
-      touch = null;
-      if (!held) cancelDwell();
       // A native touch tap can focus the button on pointerup/click; it is not keyboard focus.
-      focusReset = window.setTimeout(() => { touchFocus = false; }, 0);
+      if (!held) cancelTouch();
+      else { touch = null; window.clearTimeout(focusReset); focusReset = window.setTimeout(() => { touchFocus = false; }, 0); }
     }
     function outside(e: PointerEvent) {
       if (e.target instanceof Node && !el!.contains(e.target) && !tip!.contains(e.target)) dismiss();
@@ -131,14 +138,16 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     window.visualViewport?.addEventListener("resize", place); window.visualViewport?.addEventListener("scroll", place);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
     observer?.observe(el); observer?.observe(tip);
-    const removal = new MutationObserver(() => { if (!el.isConnected) dismiss(); else place(); });
+    const removal = new MutationObserver(() => {
+      if (!el.isConnected) { binding.current?.cleanup(); binding.current = null; }
+      else place();
+    });
     removal.observe(document.body, { childList: true, subtree: true });
     removal.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "dir"] });
     const leaf = el.closest(".ax-draft")?.querySelector(".ax-leaf");
     if (leaf) removal.observe(leaf, { attributes: true, attributeFilter: ["data-theme", "data-profile"] });
     reposition.current = place;
-    if (focused) show(); else place();
-    return () => {
+    const cleanup = () => {
       dismiss(); observer?.disconnect(); removal.disconnect(); reposition.current = () => {};
       el.removeEventListener("pointerenter", enter); el.removeEventListener("pointerleave", leave);
       el.removeEventListener("focus", focus); el.removeEventListener("blur", blur); el.removeEventListener("pointerdown", down);
@@ -150,7 +159,13 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       window.removeEventListener("scroll", place, true);
       window.visualViewport?.removeEventListener("resize", place); window.visualViewport?.removeEventListener("scroll", place);
     };
-  }, [anchor, active, descriptionId]);
+    binding.current = { el, tip, id: descriptionId, cleanup };
+    if (focused) show();
+    else if (window.matchMedia?.("(hover: hover) and (pointer: fine)").matches && el.matches(":hover")) {
+      triggerHover = true; startDwell();
+    } else place();
+  });
+  useLayoutEffect(() => () => { binding.current?.cleanup(); binding.current = null; }, []);
   useLayoutEffect(() => reposition.current(), [reason]);
   return active ? createPortal(<div ref={tipRef} role="tooltip" id={descriptionId} className="ax-tooltip" hidden>{reason}</div>, document.body) : null;
 }
