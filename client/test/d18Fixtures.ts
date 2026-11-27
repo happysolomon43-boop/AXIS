@@ -1,0 +1,18 @@
+import type {ChapterDetail,ChapterListItem,ChapterRow,ChapterSync,DraftDetail,SeriesTree} from "../src/api/types";
+import {pbTree,pbItem,pbList} from "./pullbackFixtures";
+export const A="ch_00000000000a",B="ch_00000000000b",V="ver_00000000000a",VB="ver_00000000000b",V2="ver_00000000000c";
+export const book="bk_000000000001",tree:SeriesTree={series:{...pbTree.series,owner_id:"usr_aa"},books:[{...pbTree.books[0],id:book,author_id:"usr_aa"}]};
+export const inBook:ChapterSync={state:"in_book",same:true},revised:ChapterSync={state:"being_revised",same:true};
+export const rowA:ChapterRow={id:A,book_id:book,order_key:"0000002000"},rowB:ChapterRow={id:B,book_id:book,order_key:"0000001000"};
+export const itemA:ChapterListItem={...pbItem("a",rowA.order_key,null,1,inBook),...rowA,version_id:V,active_version_id:V};
+export const itemB:ChapterListItem={...pbList.chapters[1],...rowB,title:null,word_count:1,version_id:VB,active_version_id:VB,sync:inBook};
+export const list={chapters:[itemB,itemA]},landed={chapters:[itemB,{...itemA,version_id:V2,sync:revised}]};
+export const listPath="/api/books/"+book+"/chapters",chapterPath="/api/chapters/"+A,draftPath=chapterPath+"/draft",pullPath=chapterPath+"/pull-back",meta=draftPath+"?view=sync";
+const hash="0".repeat(64);
+export const detail:ChapterDetail={chapter:rowA,version:{id:V,chapter_id:A,version_no:1,source:"send",text_hash:hash,hints_hash:hash,parent_version:null,l_seq:1,content:"River."},active_version_id:V,blocks:[{block_uid:"b_00000000000a",ordinal:1,kind:"paragraph",text:"River.",hash}],scenes:[{ordinal:1,fingerprint:hash,first_block:1,last_block:1,pov_hint:"Mara",location_hint:null,time_hint:null,time_mode:"linear"}]};
+export const nextDetail:ChapterDetail={...detail,version:{...detail.version!,id:V2,version_no:2,parent_version:V,source:"draft_edit",l_seq:2}};
+export const head:DraftDetail={chapter:rowA,draft:{base_version:V,revision:1,content:"River.",blocks:[{ordinal:1,kind:"paragraph",text:"River."}]},sync:inBook};
+export const nextHead=(revision=0):DraftDetail=>({chapter:rowA,draft:revision===0?null:{...head.draft!,base_version:V2,revision},sync:revised});
+export const success={chapter:rowA,active_version_id:V};
+export const part=(root:ParentNode,name:string)=>root.querySelector<HTMLElement>('[data-part="'+name+'"]')!;
+export const row=(root:ParentNode,id:string)=>root.querySelector<HTMLElement>('[data-chapter-id="'+id+'"]')!;
