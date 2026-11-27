@@ -91,5 +91,5 @@ test("AXB-0110 AC2: removal rollback preserves the exact name, lifecycle, receip
     expect(removedReceipt.statusCode).toBe(409);
     expect(removedReceipt.json()).toEqual({error:{code:"snapshot_conflict",message:"Snapshot name was removed",details:{reason:"snapshot_removed"}}});
   } finally { await f.app.close();await resetDb(pool); }
-  expect((await pool.query("SELECT filename FROM schema_migrations")).rowCount).toBe(14);
+  expect((await pool.query("SELECT filename FROM schema_migrations")).rowCount).toBe(15);
 });

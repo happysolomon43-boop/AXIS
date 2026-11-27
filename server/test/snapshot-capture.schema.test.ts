@@ -23,6 +23,7 @@ test("AXB-0099 AC1 isolated down and up preserve named version and ledger", asyn
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query(await readFile(new URL("../db/rollback/0015_restore_checkpoint_labels.down.sql", import.meta.url), "utf8"));
       await client.query(await readFile(new URL("../db/rollback/0014_snapshot_label_lifecycles.down.sql", import.meta.url), "utf8"));
       const migrations = async () => (await client.query("SELECT * FROM schema_migrations ORDER BY filename")).rows;
       const original = await migrations();
@@ -53,6 +54,7 @@ test("AXB-0099 AC2 receipt constraints preserve the valid row", async () => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query(await readFile(new URL("../db/rollback/0015_restore_checkpoint_labels.down.sql", import.meta.url), "utf8"));
       await client.query(await readFile(new URL("../db/rollback/0014_snapshot_label_lifecycles.down.sql", import.meta.url), "utf8"));
       const id = randomUUID();
       const args = [a.chapter.id, id, "a".repeat(64), a.version.id, next.version.id, 1, false];

@@ -136,6 +136,16 @@ test("AC2 checkpoints a different head and restores from the checkpoint parent i
   expect(checkpoint.blocks).toEqual([
     { ordinal: 1, kind: "heading", text: "Title" }, { ordinal: 2, kind: "paragraph", text: "Three!!" },
   ]);
+  const history = await read<ChapterHistory>("/history");
+  expect(history.versions[0]).toMatchObject({
+    id: written.version.id, snapshot: null, snapshot_lifecycle: null,
+  });
+  expect(history.versions[1]).toMatchObject({
+    id: checkpoint.version.id,
+    snapshot: { version_id: checkpoint.version.id, name: "Before restore", l_seq: checkpoint.version.l_seq },
+    snapshot_lifecycle: { snapshot_id: expect.any(String), state_token: expect.any(String), previous_token: null },
+    can_name_snapshot: false,
+  });
   expect(await read("/draft")).toEqual({ chapter: first.chapter, draft: null, sync: { state: "edited", same: false } });
   expect(await ledgerAfter(third.version.l_seq)).toEqual([
     { l_seq: third.version.l_seq + 1, op: "chapter.checkpoint", door: "corpus", actor: "usr_alice" },

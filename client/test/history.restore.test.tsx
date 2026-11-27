@@ -128,7 +128,7 @@ test("AC2 posts once, reports the captured outcome and preserves Restore focus",
   await keptUi.open();
   await act(async () => { fireEvent.click(keptUi.button()); });
   expect(keptUi.part("restore-status").textContent).toBe(
-    `${kept} Your earlier unsaved text was kept as a checkpoint.`,
+    `${kept} Your unsaved text was kept as the snapshot “Before restore”.`,
   );
   fireEvent.click(keptUi.rows()[1]);
   expect(keptUi.part("restore-status")).toBeNull();
@@ -169,7 +169,9 @@ test("AC3 settles a failed restore once and only offers it again after a success
       version_id: written.body.version.id, checkpoint_version_id: written.body.checkpoint_version_id,
     });
     expect(ui.part("restore-failure")).toBeNull();
-    expect(ui.part("restore-status")).toBeInTheDocument();
+    expect(ui.part("restore-status").textContent).toBe(written.body.checkpoint_version_id === null
+      ? applied
+      : `${applied} Your unsaved text was kept as the snapshot “Before restore”.`);
     expect(ui.rows()).toHaveLength(history.versions.length);
     expect(ui.posts()).toHaveLength(1);
     expect(ui.historyReads()).toBe(2);

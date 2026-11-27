@@ -4,6 +4,7 @@ import { buildApp } from "../src/app.js";
 import type { NamedSnapshot } from "../src/named-cuts/repository.js";
 import { makePool, resetDb } from "./helpers.js";
 import { fixture, state, labels, alice, bob } from "./namedCutsFixtures.js";
+import { seedVersionAs } from "./seed.js";
 const pool=makePool();
 let f: Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{await resetDb(pool); f=await fixture(pool);});
@@ -68,8 +69,12 @@ test("AXB-0092 AC2 eligibility, released guard and replay",async()=>{
   const restore=await f.app.inject({method:"POST",url:"/chapters/"+id+"/restore",headers:alice,payload:{version_id:sent.version.id}});
   expect(restore.statusCode,restore.body).toBe(201);
   const rr=restore.json();
+  const checkpointReplay=await f.name(id,rr.checkpoint_version_id);
+  expect(checkpointReplay.statusCode,checkpointReplay.body).toBe(200);
+  expect(dto(checkpointReplay)).toMatchObject({version_id:rr.checkpoint_version_id,name:"Before restore"});
+  const unnamedCheckpoint=await seedVersionAs(pool,f.seriesId,id,"Other checkpoint","checkpoint","chapter.version.append");
   const e=await f.name(id,empty.version.id);expect(e.statusCode).toBe(400);expect(e.json()).toEqual(validation("/version_id","nothing to capture"));
-  for(const v of [first.version.id,sent.version.id,imported.version.id,rr.version.id,rr.checkpoint_version_id]) {
+  for(const v of [first.version.id,sent.version.id,imported.version.id,rr.version.id,unnamedCheckpoint]) {
     const r=await f.name(id,v);expect(r.statusCode,r.body).toBe(400);expect(r.json()).toEqual(validation("/version_id","select a version created by Save"));
   }
   const a=await f.write(id,"Save A"),b=await f.write(id,"Save B");
@@ -78,7 +83,7 @@ test("AXB-0092 AC2 eligibility, released guard and replay",async()=>{
   const blocked=await f.name(id,b.version.id);
   expect(blocked.statusCode).toBe(409);expect(blocked.json()).toEqual(conflict("released_book","Released chapters require a locked version"));
   const retry=await f.name(id,a.version.id,"A");expect(retry.statusCode).toBe(200);expect(retry.json()).toEqual(firstName.json());
-  expect(await labels(pool)).toHaveLength(1);
+  expect(await labels(pool)).toHaveLength(2);
 });
 test("AXB-0092 AC3 owner, path, schema, Unicode and transport precedence",async()=>{
   const a=await saved(), b=await saved();

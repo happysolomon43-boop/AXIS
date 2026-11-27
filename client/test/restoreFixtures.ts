@@ -31,6 +31,23 @@ export const historyAfterCheckpoint: ChapterHistory = {
   ...historyH3, versions: [restoreRowBCp, checkpointRow, ...historyH3.versions],
 };
 
+export const historyAfterCheckpointNamed: ChapterHistory = {
+  ...historyAfterCheckpoint,
+  versions: historyAfterCheckpoint.versions.map((row) => ({
+    ...row,
+    snapshot: row.id === checkpointRow.id ? {
+      chapter_id: row.chapter_id, version_id: row.id, kind: "snapshot", name: "Before restore",
+      l_seq: row.l_seq, pack_pins: {}, created_at: "2026-11-20T10:00:00.000Z",
+    } : null,
+    snapshot_lifecycle: row.id === checkpointRow.id ? {
+      snapshot_id: "11111111-1111-4111-8111-111111111111",
+      state_token: "22222222-2222-4222-8222-222222222222",
+      previous_token: null,
+    } : null,
+    can_name_snapshot: false,
+  })),
+};
+
 function written(
   { at: _at, word_count: _count, ...version }: HistoryItem, checkpoint_version_id: string | null,
 ): { status: 201; body: RestoreWritten } {

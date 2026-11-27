@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import type { ChapterRef, ChapterRow, SceneRow, VersionRow } from "../corpus/repo.js";
+import { insertCheckpointLabel } from "../named-cuts/checkpoint-label.js";
 
 export type RestoreWritten = {
   chapter: ChapterRow;
@@ -51,21 +52,27 @@ export async function restoreVersion(
         : { pov, location, time, time_mode },
     );
 
-    const checkpoint = head !== undefined && head.content !== newest.content;
-    if (checkpoint) {
-      await client.query(commitVersion, [chapter.series_id, actorId, "chapter.checkpoint", JSON.stringify([{
-        kind: "chapter_version", chapter_id: chapter.id, content: head.content, source: "checkpoint",
-      }])]);
+    let checkpointVersionId: string | null = null;
+    if (head !== undefined && head.content !== newest.content) {
+      const { rows: [commit] } = await client.query<{ commit_inputs: { ids: string[] } }>(
+        commitVersion, [chapter.series_id, actorId, "chapter.checkpoint", JSON.stringify([{
+          kind: "chapter_version", chapter_id: chapter.id, content: head.content, source: "checkpoint",
+        }])],
+      );
+      const id = commit?.commit_inputs.ids[0];
+      if (!id) throw new Error("Restore rows are missing");
+      await insertCheckpointLabel(client, chapter, id, "restore");
+      checkpointVersionId = id;
     }
     await client.query(commitVersion, [chapter.series_id, actorId, "chapter.restore", JSON.stringify([{
       kind: "chapter_version", chapter_id: chapter.id, content: source.content, source: "restore",
       ...(hints.some((hint) => hint !== null) ? { hints } : {}),
     }])]);
 
-    const { rows: [version, savedHead] } = await client.query<StoredVersion>(
+    const { rows: [version] } = await client.query<StoredVersion>(
       `SELECT id, chapter_id, version_no, source, text_hash, hints_hash, parent_version, l_seq
-       FROM chapter_versions WHERE chapter_id = $1 ORDER BY version_no DESC LIMIT $2`,
-      [chapter.id, checkpoint ? 2 : 1],
+       FROM chapter_versions WHERE chapter_id = $1 ORDER BY version_no DESC LIMIT 1`,
+      [chapter.id],
     );
     const { rows: [current] } = await client.query<ChapterRow & { active_version_id: string | null }>(
       `SELECT c.id, c.book_id, c.order_key,
@@ -74,7 +81,7 @@ export async function restoreVersion(
        FROM chapters AS c WHERE c.id = $1`,
       [chapter.id],
     );
-    if (!current || !version || (checkpoint && !savedHead)) throw new Error("Restore rows are missing");
+    if (!current || !version) throw new Error("Restore rows are missing");
 
     const { active_version_id, ...chapterRow } = current;
     await client.query("COMMIT");
@@ -82,7 +89,7 @@ export async function restoreVersion(
       chapter: chapterRow,
       version: { ...version, version_no: Number(version.version_no), l_seq: Number(version.l_seq) },
       active_version_id,
-      checkpoint_version_id: savedHead?.id ?? null,
+      checkpoint_version_id: checkpointVersionId,
     };
   } catch (error) {
     try {

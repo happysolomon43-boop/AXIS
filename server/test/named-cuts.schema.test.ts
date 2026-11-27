@@ -18,6 +18,7 @@ test("AXB-0091 AC1 down and reapply preserve predecessor data in one isolated tr
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query(await readFile(new URL("../db/rollback/0015_restore_checkpoint_labels.down.sql", import.meta.url), "utf8"));
       await client.query(await readFile(new URL("../db/rollback/0014_snapshot_label_lifecycles.down.sql", import.meta.url), "utf8"));
       const migrationRows = async () => (await client.query("SELECT filename FROM schema_migrations ORDER BY filename")).rows;
       const original = await migrationRows();

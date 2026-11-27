@@ -128,7 +128,7 @@ function VersionEntry({ item, timeZone, inBook, selection, onOpen, onRetry, acti
         {selection !== null && <span className="ax-history__underline" data-part="version-underline" aria-hidden="true" />}
       </button>
       {savedSnapshot(item) && <div className="ax-history__snapshot-name" data-part="snapshot-name">
-        <span className="ax-history__snapshot-key" aria-hidden="true">S</span>
+        <span className="ax-history__snapshot-key" aria-hidden="true">{item.source === "checkpoint" ? "A" : "S"}</span>
         <div><p className="ax-history__snapshot-source">{copy["history.snapshot.namedSource"]}</p>
           <bdi className="ax-history__snapshot-label">{savedSnapshot(item)!.name}</bdi></div>
       </div>}

@@ -43,5 +43,5 @@ test("AXB-0103 AC2: staged version, ledger, label, and receipt commit atomically
   expect((await pool.query("SELECT * FROM snapshot_capture_requests")).rows).toHaveLength(beforeReceipts.length+1);
   expect((await f.app.inject({method:"GET",url:path+"/"+body.request_id,headers:alice})).json()).toEqual({capture});
  }finally{await f.app.close();await resetDb(pool);}
- expect((await pool.query("SELECT filename FROM schema_migrations")).rowCount).toBe(14);
+ expect((await pool.query("SELECT filename FROM schema_migrations")).rowCount).toBe(15);
 });

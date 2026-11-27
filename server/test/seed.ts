@@ -89,6 +89,23 @@ export async function seedVersion(
   }
 }
 
+export async function seedVersionAs(
+  pool: Pool,
+  seriesId: string,
+  chapterId: string,
+  content: string,
+  source: string,
+  op: string,
+): Promise<string> {
+  const { rows: [row] } = await pool.query<{ result: { ids: string[] } }>(
+    "SELECT commit_inputs($1, 'corpus', 'usr_alice', $2, $3::jsonb) AS result",
+    [seriesId, op, JSON.stringify([{ kind: "chapter_version", chapter_id: chapterId, content, source }])],
+  );
+  const id = row?.result.ids[0];
+  if (!id) throw new Error("Version seed returned no row");
+  return id;
+}
+
 export async function intakeCounts(pool: Pool) {
   const { rows: [counts] } = await pool.query<{
     ledger: number; chapters: number; versions: number; active: number; blocks: number; scenes: number;

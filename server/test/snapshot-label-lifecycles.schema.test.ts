@@ -18,6 +18,7 @@ test("AXB-0106 AC1–AC3: backfill, constraints, compatible and incompatible rol
   const c=await pool.connect();
   try{
    await c.query("BEGIN");
+   await c.query(await readFile(new URL("../db/rollback/0015_restore_checkpoint_labels.down.sql",import.meta.url),"utf8"));
    const rows=async(table:string)=>(await c.query("SELECT * FROM "+table)).rows;
    const before=await rows("snapshot_capture_requests");
    const marker=(await rows("snapshot_label_lifecycles"))[0];

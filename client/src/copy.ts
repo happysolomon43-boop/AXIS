@@ -114,7 +114,7 @@ export const copy = {
   "history.restoreFailed": "The version could not be restored.",
   "history.restoreBlocked": "Finish saving this chapter before restoring a version.",
   "history.restoredKept": "Restored as a new version. The text in your draft was not replaced.",
-  "history.checkpointNote": "Your earlier unsaved text was kept as a checkpoint.",
+  "history.checkpointNote": "Your unsaved text was kept as the snapshot “Before restore”.",
   "history.snapshot.filter": "Snapshot filter",
   "history.snapshot.named": "Named",
   "history.snapshot.all": "All",
