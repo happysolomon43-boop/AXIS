@@ -33,7 +33,7 @@ test("AXB-0043 AC2 declares the exact Binder action drawing without prohibited m
 
 const expectedCss = `
 .ax-binder-chapter { position: relative; }
-.ax-binder-chapter > span { position: relative; z-index: 1; pointer-events: none; }
+.ax-binder-chapter > span:not(.ax-binder__selected-rule) { position: relative; z-index: 1; pointer-events: none; }
 [data-part="chapter-open"] { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; color: inherit; font: inherit; cursor: pointer; appearance: none; }
  .ax-binder-chapter:not([data-selected="true"]) > [data-part="chapter-open"]:hover:not([aria-disabled="true"]):not([aria-current="true"]) { background-color: var(--ax-tint-hover); }
 [data-part="chapter-open"]:active:not([aria-disabled="true"]):not([aria-current="true"]) { background-color: var(--ax-tint-pressed); }

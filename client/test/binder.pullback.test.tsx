@@ -116,7 +116,7 @@ test("AXB-0072 AC3 settles errors once, discovers a landed write and allows manu
     const settle = deferred<ReturnType<typeof reply>>();
     const onOpenChapter = vi.fn();
     const { calls } = mockApi([
-      { method: "GET", path: chaptersPath, reply: (_, n) => n === 0 ? reply(pbList) : settle.promise },
+      { method: "GET", path: chaptersPath, reply: (_, n) => n === 0 ? reply(pbList) : n === 1 ? settle.promise : reply(pbList) },
       { method: "POST", path: pathC, reply: post },
     ]);
     const { container, unmount } = render(<Binder tree={pbTree} onOpenChapter={onOpenChapter} />);
