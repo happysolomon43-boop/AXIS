@@ -1,7 +1,7 @@
 import { workingPath, workingRead } from "./writeFixtures";
 import {act,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,expect,test,vi} from "vitest";
-import {undoDepth} from "prosemirror-history";
+import {undoDepth,undo} from "prosemirror-history";
 import type {EditorView} from "prosemirror-view";
 import {Draft} from "../src/draft/Draft";
 import {Shell} from "../src/shell/Shell";
@@ -43,4 +43,19 @@ test("AXB-0133 AC1 mounted History refreshes once without a second Binder read",
  const {calls}=mockApi([{method:"GET",path:listPath,reply:()=>reply(committed?landed:list)},workingRead(chapterPath, ()=>reply(committed?nextDetail:detail), ()=>reply(committed?nextHead():head)),{method:"GET",path:meta,reply:reply({sync:revised})},{method:"GET",path:historyPath,reply:()=>reply(committed?refreshed:initial)},{method:"POST",path:pullPath,reply:()=>{committed=true;return reply(success);}}]);
  const ui=render(<Shell tree={tree}/>);fireEvent.click(await screen.findByRole("button",{name:"Open Chapter 2"}));await waitFor(()=>expect(ui.container.querySelector('[data-surface="draft"]')).toHaveAttribute("data-state","clean"));fireEvent.click(screen.getByRole("button",{name:"History"}));await waitFor(()=>expect(ui.container.querySelector('[data-version-id="'+V+'"]')).not.toBeNull());
  fireEvent.click(part(row(ui.container,A),"chapter-menu-trigger"));fireEvent.click(screen.getByRole("menuitem",{name:"Pull back to Draft"}));await waitFor(()=>expect(ui.container.querySelector('[data-version-id="'+V2+'"]')).not.toBeNull());expect(part(ui.container.querySelector('[data-version-id="'+V2+'"]')!,"version-source")).toHaveTextContent("Saved");expect(part(ui.container.querySelector('[data-version-id="'+V2+'"]')!,"in-book")).toBeNull();expect(part(ui.container.querySelector('[data-version-id="'+V+'"]')!,"in-book")).not.toBeNull();expect(calls.filter(c=>c.path===historyPath)).toHaveLength(2);expect(calls.filter(c=>c.path===listPath)).toHaveLength(2);expect(calls.filter(c=>c.method==="POST")).toHaveLength(1);ui.unmount();
+});
+
+test("D19 preserves D18 generation invalidation after typing and undo restore clean content",async()=>{
+ const pending=deferred<ReturnType<typeof reply>>();
+ const ui=await mount(()=>pending.promise,reply(nextHead()),reply({chapter:rowA,base_version:V,revision:2,sync:revised}));
+ try {
+  fakeClock();const initial=ui.view.state.doc;ui.token(1);
+  expect(ui.calls.filter(c=>c.path===workingPath(chapterPath))).toHaveLength(2);
+  edit(ui.view);act(()=>{undo(ui.view.state,ui.view.dispatch)});
+  expect(ui.view.state.doc.eq(initial)).toBe(true);expect(ui.root).toHaveAttribute("data-state","clean");
+  await act(async()=>pending.resolve(reply(nextDetail)));
+  edit(ui.view);await advance(2000);
+  expect(ui.calls.find(c=>c.method==="PUT")?.body).toEqual({content:"River.!",base_version:V,base_revision:1});
+  expect(ui.onEditorReady).toHaveBeenCalledTimes(1);
+ }finally{ui.unmount();vi.clearAllTimers();vi.useRealTimers();}
 });

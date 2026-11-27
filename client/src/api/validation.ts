@@ -1,4 +1,4 @@
-import type { ChapterDetail, ChapterRow, ChapterSync, DraftHead, VersionBlock, VersionRow, WorkingState } from "./types";
+import type { ChapterDetail, ChapterRow, ChapterSync, WorkingDraftHead, VersionBlock, VersionRow, WorkingState } from "./types";
 
 export function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -73,15 +73,48 @@ function validChapterDetail(value: unknown, expectedChapter: string): value is C
     && orderedBlocks(value.blocks) && value.blocks.every((b) => "block_uid" in b && matches(b.block_uid, /^b_[0-9a-f]{12}$/, 14) && "hash" in b && hash(b.hash))
     && Array.isArray(value.scenes) && value.scenes.every(scene);
 }
-function validHead(value: unknown): value is DraftHead {
-  return object(value) && versionId(value.base_version) && integer(value.revision, 1, 2147483647)
-    && typeof value.content === "string" && orderedBlocks(value.blocks);
+function validHead(value: unknown): value is WorkingDraftHead {
+  return exactObject(value, ["base_version", "revision", "content", "blocks"])
+    && versionId(value.base_version) && integer(value.revision, 1, 2147483647)
+    && typeof value.content === "string" && orderedBlocks(value.blocks)
+    && value.blocks.every(b => exactObject(b, ["ordinal", "kind", "text", "block_uid"])
+      && ("block_uid" in b && (b.block_uid === null || (b.kind === "paragraph" && matches(b.block_uid, /^b_[0-9a-f]{12}$/, 14)))));
+}
+function paragraphCounts(blocks: readonly VersionBlock[]) {
+  const counts = new Map<string, number>();
+  for (const b of blocks) if (b.kind === "paragraph") counts.set(b.text, (counts.get(b.text) ?? 0) + 1);
+  return counts;
 }
 export function validWorkingState(value: unknown, expectedChapter: string): value is WorkingState {
-  if (!object(value)) return false;
+  if (!exactObject(value, ["chapter", "version", "active_version_id", "blocks", "scenes", "draft", "sync"])) return false;
   const { draft, sync } = value;
-  return validSync(sync) && (draft === null || validHead(draft)) && validChapterDetail(value, expectedChapter)
-    && (draft === null || draft.base_version === value.version?.id)
-    && (value.active_version_id === null ? sync.state === "draft_only" : sync.state !== "draft_only")
-    && (value.version !== null || (value.active_version_id === null && value.blocks.length === 0 && value.scenes.length === 0));
+  if (!validSync(sync) || (draft !== null && !validHead(draft)) || !validChapterDetail(value, expectedChapter)) return false;
+  const { version, blocks, active_version_id, scenes } = value;
+  if (active_version_id === null ? sync.state !== "draft_only" : sync.state === "draft_only") return false;
+  if (version === null) return draft === null && active_version_id === null && blocks.length === 0 && scenes.length === 0;
+  if (!exactObject(version, ["id", "chapter_id", "version_no", "source", "text_hash", "hints_hash", "parent_version", "l_seq", "content"])) return false;
+  const byUid = new Map<string, typeof blocks[number]>();
+  for (const b of blocks) {
+    if (!exactObject(b, ["ordinal", "kind", "text", "block_uid", "hash"]) || byUid.has(b.block_uid)) return false;
+    byUid.set(b.block_uid, b);
+  }
+  if (!scenes.every(s => exactObject(s, ["ordinal", "fingerprint", "first_block", "last_block", "pov_hint", "location_hint", "time_hint", "time_mode"]))) return false;
+  if (draft === null) return true;
+  if (draft.base_version !== version.id) return false;
+  if (draft.content === version.content) {
+    return blocks.length === draft.blocks.length && draft.blocks.every((b, i) => {
+      const stored = blocks[i]!;
+      return b.ordinal === stored.ordinal && b.kind === stored.kind && b.text === stored.text
+        && b.block_uid === (b.kind === "paragraph" ? stored.block_uid : null);
+    });
+  }
+  const versionCounts = paragraphCounts(blocks), headCounts = paragraphCounts(draft.blocks), seen = new Set<string>();
+  for (const b of draft.blocks) {
+    if (b.block_uid === null) continue;
+    const stored = byUid.get(b.block_uid);
+    if (seen.has(b.block_uid) || !stored || stored.kind !== "paragraph" || stored.text !== b.text
+      || versionCounts.get(b.text) !== 1 || headCounts.get(b.text) !== 1) return false;
+    seen.add(b.block_uid);
+  }
+  return true;
 }

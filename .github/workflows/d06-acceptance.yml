@@ -100,3 +100,22 @@ jobs:
         env:
           AXIS_BROWSER_MODULE: ${{ runner.temp }}/axis-browser/node_modules/playwright/index.mjs
         run: node .github/scripts/d18-browser.mjs
+
+      - name: Build the exact D18 predecessor for D19 visual parity
+        run: |
+          git fetch --no-tags --depth=1 origin 9f00b4a8b83e9f321d03f29003d0f8171d76882a
+          git worktree add --detach "$RUNNER_TEMP/axis-d18" 9f00b4a8b83e9f321d03f29003d0f8171d76882a
+          npm --prefix "$RUNNER_TEMP/axis-d18/client" ci --no-audit --no-fund
+          npm --prefix "$RUNNER_TEMP/axis-d18/client" run build
+      - name: D19 computed paragraph and tooltip browser acceptance
+        env:
+          AXIS_BROWSER_MODULE: ${{ runner.temp }}/axis-browser/node_modules/playwright/index.mjs
+          AXIS_D18_CLIENT: ${{ runner.temp }}/axis-d18/client
+        run: node .github/scripts/d19-browser.mjs
+      - name: Retain D19 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d19-browser-evidence
+          path: ${{ runner.temp }}/axis-d19-browser
+          if-no-files-found: ignore

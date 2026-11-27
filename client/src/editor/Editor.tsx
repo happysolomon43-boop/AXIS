@@ -10,6 +10,7 @@ import { history, undo, redo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { copy } from "../copy";
 import { blocksToDoc, type EditorBlock } from "./model";
+import { createParagraphIdentity } from "./paragraphIdentity";
 
 type Props = {
   blocks: EditorBlock[];
@@ -28,10 +29,11 @@ export function Editor({ blocks, editable, onDocChange, onReady }: Props) {
   canEdit.current = editable;
 
   useLayoutEffect(() => {
+    const identity = createParagraphIdentity();
     const view = new EditorView(host.current!, {
       state: EditorState.create({
-        doc: blocksToDoc(initial.current),
-        plugins: [history(), keymap({ "Mod-z": undo, "Mod-y": redo, "Shift-Mod-z": redo }), keymap(baseKeymap)],
+        doc: identity.initialize(blocksToDoc(initial.current)),
+        plugins: [history(), keymap({ "Mod-z": undo, "Mod-y": redo, "Shift-Mod-z": redo }), keymap(baseKeymap), identity.plugin],
       }),
       editable: () => canEdit.current,
       attributes: {
@@ -40,9 +42,10 @@ export function Editor({ blocks, editable, onDocChange, onReady }: Props) {
       },
       dispatchTransaction(transaction) {
         if (transaction.docChanged && (!canEdit.current || !view.editable)) return;
-        const next = view.state.apply(transaction);
-        view.updateState(next);
-        if (transaction.docChanged) callbacks.current.onDocChange(next.doc);
+        const applied = view.state.applyTransaction(transaction);
+        if (!applied.transactions.length) return;
+        view.updateState(applied.state);
+        if (applied.transactions.some(t => t.docChanged)) callbacks.current.onDocChange(applied.state.doc);
       },
     });
     viewRef.current = view;

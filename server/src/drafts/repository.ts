@@ -5,7 +5,9 @@ import { AppError } from "../errors.js";
 import { readChapterSync } from "../sync/read.js";
 import type { ChapterSync } from "../sync/state.js";
 
-type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
+import { projectDraftBlockUids, type WorkingDraftBlock } from "./paragraph-identity.js";
+
+export type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
 export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync: ChapterSync };
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync: ChapterSync };
@@ -66,7 +68,8 @@ export function getDraft(pool: Pool, chapter: ChapterRef): Promise<DraftDetail> 
   }));
 }
 
-export type WorkingState = ChapterDetail & Pick<DraftDetail, "draft" | "sync">;
+export type WorkingDraftHead = Omit<DraftHead, "blocks"> & { blocks: WorkingDraftBlock[] };
+export type WorkingState = ChapterDetail & { draft: WorkingDraftHead | null; sync: ChapterSync };
 
 export function getWorkingState(pool: Pool, owner: string, id: string): Promise<WorkingState> {
   return transaction(pool, readOnlyTransaction, async (client) => {
@@ -74,6 +77,9 @@ export function getWorkingState(pool: Pool, owner: string, id: string): Promise<
     const detail = await readChapterDetail(client, id);
     const draft = await readDraftHead(client, id);
     if (draft !== null && draft.base_version !== detail.version?.id) throw new Error("Invalid draft base");
-    return { ...detail, draft, sync: await readChapterSync(client, id) };
+    const sync = await readChapterSync(client, id);
+    return { ...detail, sync, draft: draft === null ? null : {
+      ...draft, blocks: projectDraftBlockUids(detail.version!.content, draft.content, detail.blocks, draft.blocks),
+    } };
   });
 }
