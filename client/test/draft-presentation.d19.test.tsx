@@ -41,11 +41,13 @@ function pointer(el:EventTarget,type:string,pointerType:string,pointerId=1,clien
  Object.defineProperties(event,{pointerType:{value:pointerType},pointerId:{value:pointerId}});
  act(()=>el.dispatchEvent(event));
 }
-test("AXB-0143 dwell, hover exit grace, cancel and long press are local and timer-clean",async()=>{
+test.each([["500ms","120ms"],[".5s",".12s"]])("AXB-0143 dwell %s and exit grace %s, cancel and long press are timer-clean",async(dwell,grace)=>{
  const ui=mountDraft();
  try{
   await ui.loaded();fakeClock();
-  const trigger=ui.part("snapshot");fireEvent.click(trigger);
+  const trigger=ui.part("snapshot");
+  trigger.style.setProperty("--ax-dwell-tooltip",dwell);trigger.style.setProperty("--ax-dur-hover",grace);
+  fireEvent.click(trigger);
   const tip=reason(trigger)!;expect(tip).not.toBeVisible();
   pointer(trigger,"pointerenter","mouse");await advance(499);expect(tip).not.toBeVisible();
   await advance(1);expect(tip).toBeVisible();

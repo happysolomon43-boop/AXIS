@@ -83,7 +83,7 @@ await withPreview(async()=>{
   await tip.waitFor({state:"hidden"});
   await page.evaluate(()=>{
    const anchor=document.querySelector('[data-part="snapshot"]'),tip=document.getElementById(anchor.getAttribute("aria-describedby"));
-   window.__d19Hover={start:null,end:null};
+   window.__d19Hover={start:null,end:null,token:getComputedStyle(anchor).getPropertyValue("--ax-dwell-tooltip"),grace:getComputedStyle(anchor).getPropertyValue("--ax-dur-hover")};
    anchor.addEventListener("pointerenter",()=>{window.__d19Hover.start=performance.now();},{once:true});
    const observer=new MutationObserver(()=>{
     if(!tip.hidden){window.__d19Hover.end=performance.now();observer.disconnect();}

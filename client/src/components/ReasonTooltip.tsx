@@ -23,6 +23,16 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       const value = parseFloat(getComputedStyle(el).getPropertyValue(name));
       return Number.isFinite(value) ? value : fallback;
     };
+    // Production CSS minification may express 500ms as .5s and 120ms
+    // as .12s. Custom properties preserve their units; do not parse them
+    // as bare numbers when scheduling a browser timer.
+    const duration = (name: string, fallback: number) => {
+      const value = getComputedStyle(el).getPropertyValue(name).trim();
+      const match = /^(\d+(?:\.\d+)?|\.\d+)(ms|s)$/.exec(value);
+      if (!match) return fallback;
+      const milliseconds = Number(match[1]) * (match[2] === "s" ? 1000 : 1);
+      return Number.isFinite(milliseconds) ? milliseconds : fallback;
+    };
     const cancelDwell = () => { window.clearTimeout(dwell); dwell = undefined; };
     const cancelGrace = () => { window.clearTimeout(grace); grace = undefined; };
     function dismiss() {
@@ -69,13 +79,13 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
         dwell = undefined;
         if (touch !== null) held = true;
         show();
-      }, token("--ax-dwell-tooltip", 500));
+      }, duration("--ax-dwell-tooltip", 500));
     }
     function maybeLeave() {
       if (held || focused || triggerHover || tipHover) return;
       cancelDwell(); cancelGrace();
       grace = window.setTimeout(() => { grace = undefined; if (!held && !focused && !triggerHover && !tipHover) tip!.hidden = true; },
-        token("--ax-dur-hover", 120));
+        duration("--ax-dur-hover", 120));
     }
     const coarse = (e: PointerEvent) => e.pointerType === "touch" || e.pointerType === "pen" ||
       (e.pointerType !== "mouse" && window.matchMedia?.("(pointer: coarse)").matches);
