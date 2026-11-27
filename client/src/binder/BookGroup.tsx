@@ -151,7 +151,7 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
     if (blocking) update({list:{state:"loading"}});
     let items: ChapterListItem[];
     try {
-      const result = await listBookChapters(book.id);
+      const result = await listBookChapters(book.id, 200);
       if (!validList(result, book.id)) throw new Error("Unusable chapter list");
       items = result;
     } catch {

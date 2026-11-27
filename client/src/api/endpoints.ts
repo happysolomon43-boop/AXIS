@@ -24,10 +24,9 @@ export function getSeries(id: string, expectedSuccessStatus?: 200): Promise<Seri
   return expectedSuccessStatus === 200 ? request("GET", path, undefined, 200) : request("GET", path);
 }
 
-export async function listBookChapters(bookId: string): Promise<ChapterListItem[]> {
-  const result = await request<{ chapters: ChapterListItem[] }>(
-    "GET", `/books/${encodeURIComponent(bookId)}/chapters`,
-  );
+export async function listBookChapters(bookId: string, expectedSuccessStatus?: 200): Promise<ChapterListItem[]> {
+  const path = `/books/${encodeURIComponent(bookId)}/chapters`;
+  const result = expectedSuccessStatus === 200 ? await request<{ chapters: ChapterListItem[] }>("GET", path, undefined, 200) : await request<{ chapters: ChapterListItem[] }>("GET", path);
   return result.chapters;
 }
 
@@ -35,8 +34,9 @@ export function createChapter(bookId: string, content: string): Promise<ChapterC
   return request("POST", `/books/${encodeURIComponent(bookId)}/chapters`, { content });
 }
 
-export function getChapter(id: string): Promise<ChapterDetail> {
-  return request("GET", `/chapters/${encodeURIComponent(id)}`);
+export function getChapter(id: string, expectedSuccessStatus?: 200): Promise<ChapterDetail> {
+  const path = `/chapters/${encodeURIComponent(id)}`;
+  return expectedSuccessStatus === 200 ? request("GET", path, undefined, 200) : request("GET", path);
 }
 
 export function saveVersion(chapterId: string, content: string, parentVersion: string): Promise<VersionWritten> {
@@ -47,8 +47,9 @@ export function sendChapter(chapterId: string, content: string, parentVersion: s
   return request("POST", `/chapters/${encodeURIComponent(chapterId)}/send`, { content, parent_version: parentVersion });
 }
 
-export function getDraft(id: string): Promise<DraftDetail> {
-  return request("GET", `/chapters/${encodeURIComponent(id)}/draft`);
+export function getDraft(id: string, expectedSuccessStatus?: 200): Promise<DraftDetail> {
+  const path = `/chapters/${encodeURIComponent(id)}/draft`;
+  return expectedSuccessStatus === 200 ? request("GET", path, undefined, 200) : request("GET", path);
 }
 
 function exactObject(value: unknown, keys: string[]): value is Record<string, unknown> {

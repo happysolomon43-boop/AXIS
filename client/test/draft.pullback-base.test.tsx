@@ -1,9 +1,10 @@
-import {act,render,waitFor} from "@testing-library/react";
+import {act,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,expect,test,vi} from "vitest";
 import {undoDepth} from "prosemirror-history";
 import type {EditorView} from "prosemirror-view";
 import {Draft} from "../src/draft/Draft";
-import {A,V,V2,rowA,detail,nextDetail,head,nextHead,chapterPath,draftPath,meta,revised,part} from "./d18Fixtures";
+import {Shell} from "../src/shell/Shell";
+import {A,V,V2,rowA,detail,nextDetail,head,nextHead,chapterPath,draftPath,meta,revised,part,tree,list,landed,listPath,pullPath,success,row} from "./d18Fixtures";
 import {advance,edit,fakeClock} from "./draftFixtures";
 import {deferred,internalError,mockApi} from "./helpers";
 import {reply} from "./d06.fixtures";
@@ -34,4 +35,11 @@ test("AXB-0133 AC3 typing during verification and a dirty notice cannot adopt or
 });
 test("AXB-0133 AC4 failed metadata and stale PUT preserve local text and conflict options",async()=>{
  for(const failFirst of [true,false]){const conflict=reply({error:{code:"conflict",message:"Draft is out of date",details:{reason:"version",current_version:V2,current_revision:0}}},409);const ui=await mount(failFirst?internalError:reply(nextDetail),(_,n)=>n===1&&!failFirst?internalError:reply(nextHead()),conflict);fakeClock();await act(async()=>ui.token(1));edit(ui.view);await advance(2000);expect(ui.view.state.doc.textContent).toBe("River.!");expect(ui.calls.find(c=>c.method==="PUT")?.body).toMatchObject({base_version:V,base_revision:1});expect(ui.root).toHaveAttribute("data-state","conflict");ui.unmount();vi.clearAllTimers();vi.useRealTimers();}
+});
+
+test("AXB-0133 AC1 mounted History refreshes once without a second Binder read",async()=>{
+ const historyPath=chapterPath+"/history";const {content:_raw,...v}=detail.version!;const {content:_next,...v2}=nextDetail.version!;const initial={chapter:rowA,active_version_id:V,versions:[{...v,at:"2026-11-26T00:00:00Z",word_count:1,snapshot:null,can_name_snapshot:false}]};const refreshed={...initial,versions:[{...v2,at:"2026-11-27T00:00:00Z",word_count:1,snapshot:null,can_name_snapshot:false},...initial.versions]};let committed=false;
+ const {calls}=mockApi([{method:"GET",path:listPath,reply:()=>reply(committed?landed:list)},{method:"GET",path:chapterPath,reply:()=>reply(committed?nextDetail:detail)},{method:"GET",path:draftPath,reply:()=>reply(committed?nextHead():head)},{method:"GET",path:meta,reply:reply({sync:revised})},{method:"GET",path:historyPath,reply:()=>reply(committed?refreshed:initial)},{method:"POST",path:pullPath,reply:()=>{committed=true;return reply(success);}}]);
+ const ui=render(<Shell tree={tree}/>);fireEvent.click(await screen.findByRole("button",{name:"Open Chapter 2"}));await waitFor(()=>expect(ui.container.querySelector('[data-surface="draft"]')).toHaveAttribute("data-state","clean"));fireEvent.click(screen.getByRole("button",{name:"History"}));await waitFor(()=>expect(ui.container.querySelector('[data-version-id="'+V+'"]')).not.toBeNull());
+ fireEvent.click(part(row(ui.container,A),"chapter-menu-trigger"));fireEvent.click(screen.getByRole("menuitem",{name:"Pull back to Draft"}));await waitFor(()=>expect(ui.container.querySelector('[data-version-id="'+V2+'"]')).not.toBeNull());expect(part(ui.container.querySelector('[data-version-id="'+V2+'"]')!,"version-source")).toHaveTextContent("Saved");expect(part(ui.container.querySelector('[data-version-id="'+V2+'"]')!,"in-book")).toBeNull();expect(part(ui.container.querySelector('[data-version-id="'+V+'"]')!,"in-book")).not.toBeNull();expect(calls.filter(c=>c.path===historyPath)).toHaveLength(2);expect(calls.filter(c=>c.path===listPath)).toHaveLength(2);expect(calls.filter(c=>c.method==="POST")).toHaveLength(1);ui.unmount();
 });

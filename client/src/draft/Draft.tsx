@@ -480,9 +480,9 @@ export function Draft({ chapterId, reloadToken = 0, syncRefreshToken = 0, onLock
     };
     async function verifyBase() {
       try {
-        const detail = await getChapter(chapterId);
+        const detail = await getChapter(chapterId, 200);
         if (!currentAttempt() || !validChapterBase(detail,chapterId) || detail.version === null || detail.version.content !== raw) return;
-        const head = await getDraft(chapterId);
+        const head = await getDraft(chapterId, 200);
         if (!currentAttempt() || !validDraftBase(head,chapterId) || head.chapter.book_id !== detail.chapter.book_id ||
             (head.draft !== null && (head.draft.base_version !== detail.version.id || head.draft.content !== raw))) return;
         const live = current.current;
