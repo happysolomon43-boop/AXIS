@@ -15,7 +15,7 @@ type Props = {
 };
 type Target = { bookId: string; chapterId: string };
 type Attempt = Target & { active: string; phase: "posting" | "refreshing" | "settling" | "unsettled" | "checking"; uncertain: boolean;
-  epoch: number; initialOpen: string | null; focusRow: boolean };
+  epoch: number; initialOpen: string | null; focusRow: boolean; navigated?: boolean };
 type Failure = { bookId: string; message: string };
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
@@ -143,7 +143,7 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
     actions.current.onChapterPullBackLanded(a.chapterId);
     const live=actions.current;
     if (current.current.expanded && !live.locked && live.openChapterId !== a.chapterId &&
-        live.openChapterId === a.initialOpen && ctl.epoch.current === a.epoch) navigate(a.chapterId);
+        live.openChapterId === a.initialOpen && ctl.epoch.current === a.epoch && live.onOpenChapter) { a.navigated=true; navigate(a.chapterId); }
   }
 
   const read = useCallback(async (blocking: boolean, write?: {failed:boolean;previousCount:number}, forAttempt?: Attempt) => {
@@ -197,7 +197,8 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
       const check=group.current?.querySelector('[data-part="pull-back-check"]');
       const landed=a.phase!=="refreshing" && a.uncertain && items.some(x=>x.id===a.chapterId && x.active_version_id===a.active && x.sync?.state==="being_revised");
       if (landed) { ctl.setFailure(null); applyLanding(a); }
-      if (focused===check) focusAfterRead.current={id:items.some(x=>x.id===a.chapterId)?a.chapterId:nextSelected,previous:focused};
+      if (a.navigated) focusAfterRead.current=null;
+      else if (focused===check) focusAfterRead.current={id:items.some(x=>x.id===a.chapterId)?a.chapterId:nextSelected,previous:focused};
       ctl.end(a);
     }
   }, [book.id, update]);
@@ -262,15 +263,15 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
     if (state.expanded && state.list.state!=="loading") void read(state.list.state!=="ready");
   }
 
-  async function pullBackItem(item: ChapterListItem) {
+  async function pullBackItem(item: ChapterListItem, fromMenu: boolean) {
     const ctl=controller.current, live=actions.current, list=current.current.list;
     const actual=list.state==="ready"?list.items.find(x=>x.id===item.id):undefined;
     if (!mounted.current || !current.current.expanded || live.locked || live.status==="released" || !actual || !canPullBack(actual) || actual.active_version_id===null) return;
-    const fromMenu=ctl.menu.current?.bookId===book.id && ctl.menu.current.chapterId===actual.id;
     const a:Attempt={bookId:book.id,chapterId:actual.id,active:actual.active_version_id,phase:"posting",uncertain:false,
       epoch:ctl.epoch.current,initialOpen:live.openChapterId,focusRow:fromMenu};
     if (!ctl.begin(a)) return;
-    if (fromMenu) {ctl.closeMenu();rowOpen(actual.id)?.focus();}
+    ctl.closeMenu();
+    if (fromMenu) rowOpen(actual.id)?.focus();
     try {
       const result=await pullBackChapter(actual.id,a.active);
       if (result.chapter.book_id!==book.id) throw new ApiError(200,"unreadable");
@@ -320,13 +321,13 @@ export function BookGroup({ book, initiallyExpanded, refreshers, openChapterId =
           </button>
           {addFailed&&<p className="ax-status ax-binder-status" role="alert" data-part="add-failure">{copy["binder.addFailed"]}</p>}
         </div>}
-        {expanded&&list.state==="ready"&&state!=="empty"&&<ol ref={chapterList} className="ax-binder-chapter-list" data-part="chapter-list">
+        {list.state==="ready"&&state!=="empty"&&<ol ref={chapterList} className="ax-binder-chapter-list" data-part="chapter-list">
           {list.items.map((item,index)=><ChapterRow key={item.id} item={item} position={index+1} current={item.id===openChapterId}
             selected={selectedId===item.id} menuOpen={pullBack.menuTarget?.bookId===book.id&&pullBack.menuTarget.chapterId===item.id}
             released={book.status==="released"} locked={locked} onSelect={()=>choose(item.id)}
             onMenu={()=>pullBack.openMenu({bookId:book.id,chapterId:item.id})} onDismiss={pullBack.closeMenu}
             onMove={direction=>rowOpen(list.items[index+direction]?.id??item.id)?.focus()}
-            onOpen={()=>navigate(item.id)} onPullBack={()=>{void pullBackItem(item);}}
+            onOpen={()=>navigate(item.id)} onPullBack={fromMenu=>{void pullBackItem(item,fromMenu);}}
             pendingPullBack={pending?.chapterId??null}/>)}
         </ol>}
         {expanded&&status!==null&&<p className={"ax-binder__pullback-failure"+(unsettled?" ax-binder__pullback-failure--unsettled":"")} data-part="pull-back-failure" role="status">{status}</p>}

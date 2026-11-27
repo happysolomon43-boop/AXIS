@@ -255,7 +255,7 @@ test("AXB-0032 AC5 applies the exact Binder design across the named parts and st
   const parts = [["numeral", "title", "count", "chip"], ["numeral", "count"], ["numeral", "count", "chip"], ["numeral", "count", "chip"]] as const;
   chapterRows(list).forEach((row, index) => {
     expect(row).toHaveClass("ax-binder-chapter");
-    expect([...row.children].map((child) => child.getAttribute("data-part"))).toEqual([...parts[index], "chapter-open"]);
+    expect([...row.children].map((child) => child.getAttribute("data-part"))).toEqual([...(index===0?["selected-rule"]:[]), ...parts[index], "chapter-menu-trigger", "chapter-open"]);
     for (const part of parts[index]) expect(row.querySelector(`[data-part="${part}"]`)).toHaveClass(classes[part]);
   });
 

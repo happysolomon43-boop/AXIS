@@ -102,6 +102,7 @@ test("AXB-0076 AC3 agrees with the chapter list and rejects an unknown chapter",
   for (const content of ["abc", "abd"]) {
     const chapter = await sent();
     await post(chapter.id, "pull-back", 200);
+    chapter.version=(await pool.query("SELECT id FROM chapter_versions WHERE chapter_id=$1 ORDER BY version_no DESC LIMIT 1",[chapter.id])).rows[0].id;
     await head(chapter, content);
   }
   const reply = await app.inject({ method: "GET", url: listPath(), headers: alice });
@@ -114,8 +115,9 @@ test("AXB-0076 AC3 agrees with the chapter list and rejects an unknown chapter",
 
 test("AXB-0076 AC4 keeps the endpoint owner-only and read-only with its existing route limits", async () => {
   const chapter = await sent();
-  await head(chapter, "abd");
   await post(chapter.id, "pull-back", 200);
+  chapter.version=(await pool.query("SELECT id FROM chapter_versions WHERE chapter_id=$1 ORDER BY version_no DESC LIMIT 1",[chapter.id])).rows[0].id;
+  await head(chapter, "abd");
   const countWorkspace = () => pool.query(
     "SELECT (SELECT count(*) FROM chapter_drafts) AS drafts, (SELECT count(*) FROM chapter_pullbacks) AS marks",
   );

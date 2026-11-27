@@ -66,5 +66,5 @@ test("AXB-0073 AC2 recognizes a lost Pull back reply and keeps the writer's unsa
   expect(calls.map(({ method, path }) => [method, path])).toEqual([
     ["GET", chaptersPath], ["GET", chapterPath], ["GET", draftPath], ["POST", path], ["GET", chaptersPath],
   ]);
-  expect(calls[3].body).toBeUndefined();
+  expect(calls[3].body).toEqual({expected_active_version_id:b.active_version_id});
 });

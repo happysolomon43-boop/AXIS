@@ -154,7 +154,7 @@ test("AXB-0085 AC4 errors and null consume only their own token", async () => {
   await act(async () => { bad.token(1); });
   expect(bad.chip()).toHaveTextContent(/^Being revised$/);
   expect(bad.root).toHaveAttribute("data-state","clean");
-  expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  expect(globalThis.fetch).toHaveBeenCalledTimes(3);
   bad.unmount();
 });
 

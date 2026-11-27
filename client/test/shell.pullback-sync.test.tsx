@@ -44,7 +44,7 @@ test("AXB-0087 AC1 only the open Draft receives the landed signal",async()=>{
   expect(root(ui.container)).toBe(draft);expect(editor.view).toBe(view);
   expect(editor.view!.state.doc.eq(text)).toBe(true);
   expect(part(ui.container,"history-door")).toHaveAttribute("aria-expanded",history!);
-  expect(calls.slice(before).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+chaptersPath,"GET "+meta,"POST "+pull(A)].sort());
+  expect(calls.slice(before).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+chaptersPath,"GET "+meta,"POST "+pull(A),"GET "+chapterPath,"GET "+draftPath].sort());
 });
 test("AXB-0087 AC2 routes against live chapter; navigation does not replay token",async()=>{
   const post=deferred<"network">(), settle=deferred<ReturnType<typeof reply>>();

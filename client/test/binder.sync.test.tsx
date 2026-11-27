@@ -10,7 +10,7 @@ const labels = ["Draft only", null, "In Book, edited since upload", "Being revis
 const legacy = [
   { ...pbList.chapters[0], sync: undefined },
   { ...pbList.chapters[1], sync: undefined },
-  { ...pbList.chapters[2], sync: undefined, version_id: "ver_different" },
+  { ...pbList.chapters[2], sync: undefined, version_id: "ver_ffffffffffff" },
 ];
 
 test("AXB-0071 AC1 formats all served states, unknown states and legacy items", () => {

@@ -68,7 +68,7 @@ test("AXB-0072 AC2 starts one POST and one silent read, opens once and restores 
     const settle = deferred<ReturnType<typeof reply>>();
     const onOpenChapter = vi.fn();
     const { calls } = mockApi([
-      { method: "GET", path: chaptersPath, reply: (_, n) => n === 0 ? reply(pbList) : settle.promise },
+      { method: "GET", path: chaptersPath, reply: (_, n) => n === 0 ? reply(pbList) : n === 1 ? settle.promise : reply(pbList) },
       { method: "POST", path: pathB, reply: () => post.promise },
     ]);
     const { container, unmount } = render(<Binder tree={pbTree} openChapterId={openChapterId} onOpenChapter={onOpenChapter} />);
@@ -83,7 +83,7 @@ test("AXB-0072 AC2 starts one POST and one silent read, opens once and restores 
       fireEvent.click(action);
     }
     expect(routes(calls)).toEqual([listGet, `POST ${pathB}`]);
-    expect(calls[1].body).toBeUndefined();
+    expect(calls[1].body).toEqual({expected_active_version_id:b.active_version_id});
 
     await act(async () => { post.resolve(pullBackReplyB); });
     expect(routes(calls)).toEqual([listGet, `POST ${pathB}`, listGet]);
@@ -133,6 +133,15 @@ test("AXB-0072 AC3 settles errors once, discovers a landed write and allows manu
 
     await act(async () => { settle.resolve(read); });
     expect(routes(calls)).toEqual([listGet, `POST ${pathC}`, listGet]);
+    if(read===internalEnvelope){
+      expect(buttonB()).toHaveAttribute("aria-disabled","true");
+      expect(active).toHaveAttribute("aria-disabled","true");
+      fireEvent.click(screen.getByRole("button",{name:"Check again"}));
+      await waitFor(()=>expect(buttonB()).not.toHaveAttribute("aria-disabled"));
+      expect(routes(calls)).toEqual([listGet,`POST ${pathC}`,listGet,listGet]);
+      expect(onOpenChapter).not.toHaveBeenCalled();
+      unmount();continue;
+    }
     expect(buttonB()).not.toHaveAttribute("aria-disabled");
     if (landed) {
       expect(message).not.toBeInTheDocument();
@@ -148,7 +157,6 @@ test("AXB-0072 AC3 settles errors once, discovers a landed write and allows manu
         expect(part(row, "chapter-open")).toHaveFocus();
       } else {
         expect(active).not.toHaveAttribute("aria-disabled");
-        if (read === internalEnvelope) expect(screen.getByRole("alert")).toHaveTextContent("The chapters could not be read.");
         fireEvent.click(active);
         expect(message).not.toBeInTheDocument();
         await waitFor(() => expect(routes(calls).slice(0, 4)).toEqual([listGet, `POST ${pathC}`, listGet, `POST ${pathC}`]));

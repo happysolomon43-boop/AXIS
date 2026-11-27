@@ -17,7 +17,7 @@ test("AXB-0041 AC1 opens only noncurrent unlocked rows and preserves existing pa
   const parts = [["numeral", "title", "count", "chip"], ["numeral", "count"], ["numeral", "count", "chip"], ["numeral", "count", "chip"]];
   buttons(container).forEach((button, i) => {
     expect(button).toHaveAccessibleName(names[i]); expect(button).toBe(rows(container)[i].lastElementChild);
-    expect([...rows(container)[i].children].map(el => el.getAttribute("data-part"))).toEqual([...parts[i], "chapter-open"]);
+    expect([...rows(container)[i].children].map(el => el.getAttribute("data-part"))).toEqual([...(i===1?["selected-rule"]:[]), ...parts[i], "chapter-menu-trigger", "chapter-open"]);
     if (i === 1) expect(button).toHaveAttribute("aria-current", "true"); else expect(button).not.toHaveAttribute("aria-current");
   });
   fireEvent.click(buttons(container)[0]); expect(onOpenChapter.mock.calls).toEqual([[chapterA.id]]);

@@ -16,7 +16,7 @@ test("AXB-0070 AC1 sends one encoded POST with no body or content type", async (
   ]);
   expect(await pullBackChapter(id)).toEqual(pullBackReplyB.body);
   expect(calls).toHaveLength(1);
-  expect(await pullBackChapter("a/b")).toEqual(pullBackReplyB.body);
+  await expect(pullBackChapter("a/b")).rejects.toMatchObject({status:200,code:"unreadable"});
   expect(calls.map(({ method, path, headers, body }) => [method, path, headers.get("Content-Type"), body]))
     .toEqual([["POST", path, null, undefined], ["POST", encodedPath, null, undefined]]);
   expect(calls[0].headers.get("X-Axis-User")).toBe("usr_alice");

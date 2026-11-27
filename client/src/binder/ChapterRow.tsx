@@ -12,7 +12,7 @@ export function canPullBack(item: ChapterListItem): boolean {
 export function ChapterRow({ item, position, current = false, locked = false, onOpen, onPullBack, pendingPullBack,
   selected = false, menuOpen = false, released = false, onSelect, onMenu, onDismiss, onMove }: {
   item: ChapterListItem; position: number; current?: boolean; locked?: boolean; onOpen?: () => void;
-  onPullBack?: () => void; pendingPullBack?: string | null; selected?: boolean; menuOpen?: boolean; released?: boolean;
+  onPullBack?: (fromMenu: boolean) => void; pendingPullBack?: string | null; selected?: boolean; menuOpen?: boolean; released?: boolean;
   onSelect?: () => void; onMenu?: () => void; onDismiss?: () => void; onMove?: (direction: number) => void;
 }) {
   const chip = syncChip(item);
@@ -89,12 +89,12 @@ export function ChapterRow({ item, position, current = false, locked = false, on
           aria-disabled={current || locked || undefined} onFocus={() => setRoving(0)} onClick={navigate}>{copy["binder.menuOpen"]}</button>
         {eligible && <button type="button" className="ax-binder__menu-item" role="menuitem" tabIndex={roving === 1 ? 0 : -1}
           aria-disabled={pullBackInert || undefined} onFocus={() => setRoving(1)}
-          onClick={() => { if (!pullBackInert) onPullBack?.(); }}>{copy["binder.menuPullBack"]}</button>}
+          onClick={() => { if (!pullBackInert) onPullBack?.(true); }}>{copy["binder.menuPullBack"]}</button>}
       </div>}
       {eligible && (
         <button className="ax-button ax-button--quiet ax-binder__pullback" type="button" data-part="chapter-pull-back"
           aria-label={copy["binder.pullBackPrefix"] + " " + name}
-          aria-disabled={pullBackInert || undefined} onClick={() => { if (!pullBackInert) onPullBack?.(); }}>
+          aria-disabled={pullBackInert || undefined} onClick={() => { if (!pullBackInert) onPullBack?.(false); }}>
           {pendingPullBack === item.id ? copy["binder.pullingBack"] : copy["binder.pullBack"]}
         </button>
       )}

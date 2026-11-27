@@ -53,7 +53,7 @@ test("AXB-0088 AC2 Break-It Probe: Send wins against a held Pull back snapshot",
     await act(async()=>{fresh.resolve(reply({sync:syncInBook}));});
     expect(part(root,"version-chip")).toBeNull();
     expect(editor.view).toBe(view);expect(view.state.doc.eq(text)).toBe(true);
-    expect(calls.slice(start).map(c=>c.method+" "+c.path).sort()).toEqual([
+    expect(calls.slice(start).map(c=>c.method+" "+c.path).sort()).toEqual(["GET "+chapterPath,"GET "+draftPath,
       "POST "+pull,"POST "+send,"GET "+chaptersPath,"GET "+chaptersPath,"GET "+meta,"GET "+meta,
     ].sort());
   }finally{
