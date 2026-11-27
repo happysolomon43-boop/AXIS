@@ -2,12 +2,12 @@ import {expect,test} from "vitest";
 import css from "../src/styles/binder-pullback-check.css?raw";
 import tokens from "../src/styles/tokens.css?raw";
 const compact=(v:string)=>v.replace(/\s+/g,"");
-test("AXB-0136 AC1 DV7-8 values; documented unresolved token-name discrepancy",()=>{
+test("AXB-0136 AC1 DV7-8 values with approved existing 56px Binder rail token",()=>{
  expect(tokens).toMatch(/--ax-size-binder-rail:\s*56px/);
- expect(tokens).not.toMatch(/--ax-size-hang\s*:/);
+ expect(css).not.toContain("--ax-size-hang");
  const expected=`
 .ax-binder__pullback-failure--unsettled{inset-block-end:var(--ax-size-row);}
-.ax-binder__pullback-check{position:sticky;inset-block-end:0;display:flex;align-items:center;box-sizing:border-box;inline-size:100%;block-size:var(--ax-size-row);padding-block:0;padding-inline-start:var(--ax-size-hang,var(--ax-size-binder-rail));padding-inline-end:var(--ax-space-4);border:0;border-radius:0;background-color:var(--ax-color-surface-shell);color:var(--ax-color-text-primary);font:inherit;font-size:0.875rem;line-height:1.25rem;font-weight:600;text-align:start;cursor:pointer;}
+.ax-binder__pullback-check{position:sticky;inset-block-end:0;display:flex;align-items:center;box-sizing:border-box;inline-size:100%;block-size:var(--ax-size-row);padding-block:0;padding-inline-start:var(--ax-size-binder-rail);padding-inline-end:var(--ax-space-4);border:0;border-radius:0;background-color:var(--ax-color-surface-shell);color:var(--ax-color-text-primary);font:inherit;font-size:0.875rem;line-height:1.25rem;font-weight:600;text-align:start;cursor:pointer;}
 @media(hover:hover){.ax-binder__pullback-check:not([aria-disabled="true"]):hover{background-color:color-mix(in srgb,var(--ax-color-text-primary) 6%,var(--ax-color-surface-shell));}}
 .ax-binder__pullback-check:not([aria-disabled="true"]):active{background-color:color-mix(in srgb,var(--ax-color-text-primary) 14%,var(--ax-color-surface-shell));}
 .ax-binder__pullback-check:focus{outline:2px solid var(--ax-color-focus);outline-offset:-2px;}
@@ -16,7 +16,7 @@ test("AXB-0136 AC1 DV7-8 values; documented unresolved token-name discrepancy",(
 @media(max-width:767px){.ax-binder__pullback-check{font-size:0.9375rem;line-height:1.375rem;}}
 `;
  expect(compact(css)).toBe(compact(expected));
- for(const [,name] of css.matchAll(/var\((--ax-[\w-]+)/g))if(name!=="--ax-size-hang")expect(tokens).toContain(name+":");
+ for(const [,name] of css.matchAll(/var\((--ax-[\w-]+)/g))expect(tokens).toContain(name+":");
 });
 test("AXB-0136 AC2 contrast and lint",()=>{
  const rgb=(h:string)=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
