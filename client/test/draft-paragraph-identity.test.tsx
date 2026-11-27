@@ -79,7 +79,7 @@ test("AXB-0141 D18 matching notice adopts verified coordinates without changing 
   await act(async()=>ui.rerender(element(1)));
   expect(v.state.doc).toBe(original);expect(v.state.selection.eq(selection)).toBe(true);expect(undoDepth(v.state)).toBe(depth);expect(ready).toHaveBeenCalledTimes(1);
   act(()=>v.dispatch(v.state.tr.insertText("!",pos+2)));await advance(2000);
-  expect(api.calls.filter(c=>c.method==="GET").map(c=>c.path)).toEqual([chapterPath+"/working-state",chapterPath+"/working-state",meta]);
+  expect(api.calls.filter(c=>c.method==="GET").map(c=>c.path)).toEqual([chapterPath+"/working-state",meta,chapterPath+"/working-state"]);
   expect(api.calls.find(c=>c.method==="PUT")?.body).toEqual({base_version:V2,base_revision:0,content:equal.version!.content.replace("River.","R!iver.")});
   expect(written).not.toHaveBeenCalled();
  }finally{ui.unmount();vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();}
