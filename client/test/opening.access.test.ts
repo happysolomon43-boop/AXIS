@@ -28,13 +28,18 @@ test("AXB-0128 AC1 all nine contrast fixtures and actual token values",()=>{
   }
 });
 test("AXB-0128 AC2 every var resolves and no forbidden declarations",()=>{
+  expect(tokens).toContain("--ax-color-focus: var(--ax-color-text-primary)");
+  expect(base).toContain("outline: 2px solid var(--ax-color-focus)");
+  expect(base).toContain('.ax-button.ax-opening__retry[aria-disabled="true"] { opacity: 1; }');
+  expect(base).toContain(".ax-button.ax-opening__retry { block-size: auto; }");
+  expect(base).toContain('.ax-button.ax-opening__retry:active:not([aria-disabled="true"]) { transition-duration: var(--ax-dur-press); }');
   const declared=new Set([... (tokens+base).matchAll(/(--[\w-]+)\s*:/g)].map(m=>m[1]));
-  for(const m of opening.matchAll(/var\((--[\w-]+)\)/g))expect(declared.has(m[1]),m[1]).toBe(true);
+  for(const m of opening.matchAll(/var\(\s*(--[\w-]+)/g))expect(declared.has(m[1]),m[1]).toBe(true);
   expect(opening).not.toMatch(/#[\da-f]{3,8}\b|\b(?:rgba?|hsla?)\(|@keyframes/i);
   for(const match of opening.matchAll(/(?:^|(?<=[;{]))\s*([a-z-]+)\s*:\s*([^;{}]+);/gm)){
     const [,property,value]=match;
-    expect(property).not.toMatch(/^(?:height|block-size|outline(?:-.+)?|animation(?:-.+)?|opacity|pointer-events|transform)$/);
-    if(property==="font-size")expect(Number.parseFloat(value)).toBeGreaterThanOrEqual(0.75);
-    if(property==="transition")expect(value.trim()).toBe("none");
+    expect(property).not.toMatch(/^(?:(?:min-|max-)?height|(?:max-)?block-size|outline(?:-.+)?|animation(?:-.+)?|opacity|pointer-events|transform(?:-.+)?)$/);
+    if(property==="font-size"){expect(value.trim()).toMatch(/^\d+(?:\.\d+)?rem$/);expect(Number.parseFloat(value)).toBeGreaterThanOrEqual(0.75);}
+    if(property.startsWith("transition"))expect([property,value.trim()]).toEqual(["transition","none"]);
   }
 });

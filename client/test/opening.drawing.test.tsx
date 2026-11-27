@@ -14,8 +14,13 @@ test("AXB-0127 AC1 three exact drawings, same root and retry node",async()=>{
   function drawing(state:string,parts:string[]){
     expect(container.firstElementChild).toBe(root);
     expect(root).toHaveAttribute("data-state",state);
+    expect(root).toHaveAttribute("data-surface",state==="opening"?"opening":"opening-failed");
     expect([...root.children].map(el=>el.getAttribute("data-part"))).toEqual(parts);
+    expect([...root.querySelectorAll("*")].map(el=>el.getAttribute("data-part"))).toEqual(parts);
     expect(root.querySelector("svg,img")).toBeNull();
+    expect(root.children[0].tagName).toBe("P");
+    if(state!=="failed")expect(root.children[1].tagName).toBe("DIV");
+    if(state!=="opening")expect(root.lastElementChild?.tagName).toBe("BUTTON");
   }
   drawing("opening",["status","rule"]);
   expect(screen.getByRole("status")).toHaveClass("ax-opening__status");

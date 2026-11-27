@@ -257,6 +257,7 @@ body {
 /* The opening retry blends its colours, not its focus ring, and grows with text. */
 .ax-button.ax-opening__retry { block-size: auto; }
 .ax-button.ax-opening__retry[aria-disabled="true"] { opacity: 1; }
+.ax-button.ax-opening__retry:active:not([aria-disabled="true"]) { transition-duration: var(--ax-dur-press); }
 `;
 
 function readDeclarations(css: string) {
