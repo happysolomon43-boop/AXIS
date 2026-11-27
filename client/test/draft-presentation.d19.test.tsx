@@ -54,7 +54,9 @@ test.each([["500ms","120ms"],[".5s",".12s"]])("AXB-0143 dwell %s and exit grace 
   pointer(trigger,"pointerleave","mouse");await advance(119);expect(tip).toBeVisible();
   pointer(tip,"pointerenter","mouse");await advance(100);expect(tip).toBeVisible();
   pointer(tip,"pointerleave","mouse");await advance(120);expect(tip).not.toBeVisible();
-  pointer(trigger,"pointerdown","touch",7);await advance(499);pointer(document,"pointerup","touch",7);await advance(501);expect(tip).not.toBeVisible();
+  pointer(trigger,"pointerdown","touch",7);await advance(499);pointer(document,"pointerup","touch",7);await advance(1);
+  act(()=>trigger.focus());expect(tip).not.toBeVisible();fireEvent.click(trigger);await advance(501);expect(tip).not.toBeVisible();
+  act(()=>ui.part("snapshot-name").focus());
   pointer(trigger,"pointerdown","touch",8);pointer(document,"pointercancel","touch",8);await advance(500);expect(tip).not.toBeVisible();
   pointer(trigger,"pointerdown","touch",9);pointer(trigger,"pointerleave","touch",9);await advance(500);expect(tip).not.toBeVisible();
   pointer(trigger,"pointerdown","touch",10);await advance(500);expect(tip).toBeVisible();pointer(document,"pointerup","touch",10);

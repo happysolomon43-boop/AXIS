@@ -17,7 +17,6 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     let dwell: number | undefined, grace: number | undefined;
     let triggerHover = false, tipHover = false, focused = document.activeElement === el;
     let touch: number | null = null, held = false, touchFocus = false;
-    let focusReset: number | undefined;
     let dismissed = false;
     const token = (name: string, fallback: number) => {
       const value = parseFloat(getComputedStyle(el).getPropertyValue(name));
@@ -36,7 +35,7 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     const cancelDwell = () => { window.clearTimeout(dwell); dwell = undefined; };
     const cancelGrace = () => { window.clearTimeout(grace); grace = undefined; };
     function dismiss() {
-      cancelDwell(); cancelGrace(); window.clearTimeout(focusReset); touch = null; held = false; touchFocus = false; dismissed = true; triggerHover = false; tipHover = false;
+      cancelDwell(); cancelGrace(); touch = null; held = false; touchFocus = false; dismissed = true; triggerHover = false; tipHover = false;
       tip!.hidden = true;
     }
     function place() {
@@ -95,25 +94,27 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
       if (tip!.hidden) startDwell();
     }
     function cancelTouch() {
-      touch = null; cancelDwell(); window.clearTimeout(focusReset);
-      focusReset = window.setTimeout(() => { touchFocus = false; }, 0);
+      touch = null; cancelDwell(); touchFocus = false;
     }
     function leave(e: PointerEvent) {
       triggerHover = false;
       if (touch === e.pointerId && !held) cancelTouch();
       if (!coarse(e)) maybeLeave();
     }
-    function focus() {
+    function focus(e: FocusEvent) {
       focused = true;
-      // A touch-generated focus does not bypass the long-press intent delay.
-      if (touch !== null || touchFocus) return;
+      // Touch compatibility focus can occur in a later task, after pointerup
+      // and before the native click. No timer may convert it to fresh intent.
+      const touchGenerated = (e as FocusEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } | null })
+        .sourceCapabilities?.firesTouchEvents;
+      if (touch !== null || touchFocus || touchGenerated) { touchFocus = false; return; }
       dismissed = false; show();
     }
     function blur() { focused = false; dismiss(); }
     function down(e: PointerEvent) {
-      if (!coarse(e) || e.button !== 0) return;
+      if (!coarse(e)) { touchFocus = false; return; }
+      if (e.button !== 0) return;
       touch = e.pointerId; held = false; dismissed = false; touchFocus = true;
-      window.clearTimeout(focusReset);
       tip!.hidden = true;
       startDwell();
     }
@@ -126,21 +127,27 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     }
     function up(e: PointerEvent) {
       if (touch !== e.pointerId) return;
-      // A native touch tap can focus the button on pointerup/click; it is not keyboard focus.
-      if (!held) cancelTouch();
-      else { touch = null; window.clearTimeout(focusReset); focusReset = window.setTimeout(() => { touchFocus = false; }, 0); }
+      // Preserve the suppression through the subsequent compatibility focus/click.
+      touch = null;
+      if (!held) cancelDwell();
     }
+    function canceled(e: PointerEvent) {
+      if (touch !== e.pointerId) return;
+      if (held) { touch = null; touchFocus = false; }
+      else cancelTouch();
+    }
+    function clicked() { touchFocus = false; }
     function outside(e: PointerEvent) {
       if (e.target instanceof Node && !el!.contains(e.target) && !tip!.contains(e.target)) dismiss();
     }
-    function escape(e: KeyboardEvent) { if (e.key === "Escape") dismiss(); }
+    function escape(e: KeyboardEvent) { if (e.key === "Escape") dismiss(); else touchFocus = false; }
     function tipEnter() { tipHover = true; cancelGrace(); }
     function tipLeave() { tipHover = false; maybeLeave(); }
     el.addEventListener("pointerenter", enter); el.addEventListener("pointerleave", leave);
     el.addEventListener("focus", focus); el.addEventListener("blur", blur);
-    el.addEventListener("pointerdown", down);
+    el.addEventListener("pointerdown", down); el.addEventListener("click", clicked);
     document.addEventListener("pointermove", move, true);
-    document.addEventListener("pointerup", up, true); document.addEventListener("pointercancel", up, true);
+    document.addEventListener("pointerup", up, true); document.addEventListener("pointercancel", canceled, true);
     document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", escape, true);
     tip.addEventListener("pointerenter", tipEnter); tip.addEventListener("pointerleave", tipLeave);
     window.addEventListener("blur", dismiss); window.addEventListener("resize", place);
@@ -160,9 +167,9 @@ export function ReasonTooltip({ anchor, active, reason, descriptionId }: Props):
     const cleanup = () => {
       dismiss(); observer?.disconnect(); removal.disconnect(); reposition.current = () => {};
       el.removeEventListener("pointerenter", enter); el.removeEventListener("pointerleave", leave);
-      el.removeEventListener("focus", focus); el.removeEventListener("blur", blur); el.removeEventListener("pointerdown", down);
+      el.removeEventListener("focus", focus); el.removeEventListener("blur", blur); el.removeEventListener("pointerdown", down); el.removeEventListener("click", clicked);
       document.removeEventListener("pointermove", move, true);
-      document.removeEventListener("pointerup", up, true); document.removeEventListener("pointercancel", up, true);
+      document.removeEventListener("pointerup", up, true); document.removeEventListener("pointercancel", canceled, true);
       document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", escape, true);
       tip.removeEventListener("pointerenter", tipEnter); tip.removeEventListener("pointerleave", tipLeave);
       window.removeEventListener("blur", dismiss); window.removeEventListener("resize", place);
