@@ -3,7 +3,7 @@ import type { BookRow, ChapterCreated, ChapterListItem, SeriesRow, SeriesTree } 
 
 export type Call = { method: string; path: string; headers: Headers; body: unknown };
 
-type Reply = { status: number; body: unknown } | "network";
+type Reply = { status: number; body: unknown; headers?: Record<string, string> } | "network";
 type Handler = {
   method: string;
   path: string | RegExp;
@@ -30,7 +30,7 @@ export function mockApi(handlers: Handler[]) {
     if (reply === "network") throw new TypeError("Failed to fetch");
     return new Response(JSON.stringify(reply.body), {
       status: reply.status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...reply.headers },
     });
   }));
   return { calls };

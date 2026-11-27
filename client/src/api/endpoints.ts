@@ -1,8 +1,15 @@
 import { request } from "./http";
 import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
-export async function listSeries(expectedSuccessStatus?: number): Promise<SeriesRow[]> {
-  const result = await request<{ series: SeriesRow[] }>("GET", "/series", undefined, expectedSuccessStatus);
+export function listSeries(): Promise<SeriesRow[]>;
+export function listSeries(expectedSuccessStatus: 200): Promise<SeriesRow[]>;
+export async function listSeries(expectedSuccessStatus?: 200): Promise<SeriesRow[]> {
+  if (expectedSuccessStatus === 200) {
+    const result = await request<{ series: SeriesRow[] }>("GET", "/series", undefined, 200);
+    // Preserve an unusable list for the opening consumer's BC5 validation.
+    return result?.series;
+  }
+  const result = await request<{ series: SeriesRow[] }>("GET", "/series");
   return result.series;
 }
 
@@ -10,8 +17,11 @@ export function createSeries(title: string): Promise<SeriesTree> {
   return request("POST", "/series", { title });
 }
 
-export function getSeries(id: string, expectedSuccessStatus?: number): Promise<SeriesTree> {
-  return request("GET", `/series/${encodeURIComponent(id)}`, undefined, expectedSuccessStatus);
+export function getSeries(id: string): Promise<SeriesTree>;
+export function getSeries(id: string, expectedSuccessStatus: 200): Promise<SeriesTree>;
+export function getSeries(id: string, expectedSuccessStatus?: 200): Promise<SeriesTree> {
+  const path = `/series/${encodeURIComponent(id)}`;
+  return expectedSuccessStatus === 200 ? request("GET", path, undefined, 200) : request("GET", path);
 }
 
 export async function listBookChapters(bookId: string): Promise<ChapterListItem[]> {

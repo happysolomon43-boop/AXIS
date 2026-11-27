@@ -33,8 +33,8 @@ function expectVary(headers: Record<string, unknown>, expected: string[]) {
 test("AXB-0122 AC1 and AC2 negotiate any path before identity, body and SQL", async () => {
   const connect = vi.spyOn(pool, "connect");
   const query = vi.spyOn(pool, "query");
-  for (const names of ["content-type, X-Axis-User", "X-Axis-User, x-axis-user, Content-Type", ["content-type", "X-Axis-User"], undefined]) {
-    const response = await app.inject({ method: "OPTIONS", url: "/missing", headers: {
+  for (const url of ["/series", "/missing"]) for (const names of ["content-type, X-Axis-User", "X-Axis-User, x-axis-user, Content-Type", ["content-type", "X-Axis-User"], undefined]) {
+    const response = await app.inject({ method: "OPTIONS", url, headers: {
       origin, "access-control-request-method": "POST", ...(names === undefined ? {} : {"access-control-request-headers": names}),
     } });
     expect(response.statusCode).toBe(204);
@@ -59,6 +59,8 @@ test("AXB-0122 AC1 and AC2 negotiate any path before identity, body and SQL", as
     expect(grantHeaders(response.headers)).toEqual([]);
     expectVary(response.headers, vary);
   }
+  const malformedBody = await app.inject({ method: "OPTIONS", url: "/series", headers: { origin, "access-control-request-method": "POST", "content-type": "application/json" }, payload: "{bad" });
+  expect(malformedBody.statusCode).toBe(204);
   expect(connect).not.toHaveBeenCalled();
   expect(query).not.toHaveBeenCalled();
 });

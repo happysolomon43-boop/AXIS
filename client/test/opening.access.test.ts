@@ -31,7 +31,7 @@ test("AXB-0128 AC2 every var resolves and no forbidden declarations",()=>{
   const declared=new Set([... (tokens+base).matchAll(/(--[\w-]+)\s*:/g)].map(m=>m[1]));
   for(const m of opening.matchAll(/var\((--[\w-]+)\)/g))expect(declared.has(m[1]),m[1]).toBe(true);
   expect(opening).not.toMatch(/#[\da-f]{3,8}\b|\b(?:rgba?|hsla?)\(|@keyframes/i);
-  for(const match of opening.matchAll(/(?:^|[;{])\s*([a-z-]+)\s*:\s*([^;{}]+);/gm)){
+  for(const match of opening.matchAll(/(?:^|(?<=[;{]))\s*([a-z-]+)\s*:\s*([^;{}]+);/gm)){
     const [,property,value]=match;
     expect(property).not.toMatch(/^(?:height|block-size|outline(?:-.+)?|animation(?:-.+)?|opacity|pointer-events|transform)$/);
     if(property==="font-size")expect(Number.parseFloat(value)).toBeGreaterThanOrEqual(0.75);

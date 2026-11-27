@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getSeries, listSeries } from "./api/endpoints";
 import { ApiError } from "./api/http";
 import type { BookRow, SeriesRow, SeriesTree } from "./api/types";
@@ -83,7 +83,7 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     mounted.current = true;
     void open();
     return () => {

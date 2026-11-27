@@ -10,10 +10,20 @@ test("AXB-0126 AC2 same named Connection trace: list failure then explicit retry
   localStorage.removeItem("axis.lastSeriesId");
   const served:unknown[]=[];
   const {calls}=mockApi([
-    {method:"GET",path:service+"/series",reply:(_,n)=>{const step=expectedTrace[n];served.push(step);return {status:step.status,body:step.body};}},
-    {method:"GET",path:service+"/series/"+series.id,reply:()=>{const step=expectedTrace[2];served.push(step);return {status:step.status,body:step.body};}},
+    {method:"GET",path:service+"/series",reply:(_,n)=>{const step=expectedTrace[n];return {status:step.status,body:step.body,headers:{"Access-Control-Allow-Origin":step.origin}};}},
+    {method:"GET",path:service+"/series/"+series.id,reply:()=>{const step=expectedTrace[2];return {status:step.status,body:step.body,headers:{"Access-Control-Allow-Origin":step.origin}};}},
     {method:"GET",path:service+"/books/"+book.id+"/chapters",reply:{status:200,body:{chapters:[]}}},
   ]);
+  const transport=vi.mocked(fetch);
+  const implementation=transport.getMockImplementation()!;
+  transport.mockImplementation(async(input,init)=>{
+    const response=await implementation(input,init);
+    const path=String(input).slice(service.length);
+    if(path==="/series" || path==="/series/"+series.id){
+      served.push({path,status:response.status,origin:response.headers.get("Access-Control-Allow-Origin"),body:await response.clone().json()});
+    }
+    return response;
+  });
   try{
     render(<App/>);
     expect((await screen.findByRole("alert")).textContent).toBe("Your workspace could not be opened.");

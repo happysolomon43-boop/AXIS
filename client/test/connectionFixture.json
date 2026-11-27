@@ -1,0 +1,77 @@
+{
+  "origin": "https://writer.example.test",
+  "service": "https://axis.example.test:8443",
+  "series": {
+    "id": "ser_00000000000a",
+    "owner_id": "usr_alice",
+    "title": "Ashfall",
+    "genre_rubric_id": null,
+    "foundation": {}
+  },
+  "book": {
+    "id": "bk_00000000000a",
+    "series_id": "ser_00000000000a",
+    "title": "The Third Bell",
+    "status": "drafting",
+    "ordinal": 1,
+    "author_id": "usr_alice",
+    "language": "English",
+    "label": null
+  },
+  "expectedTrace": [
+    {
+      "path": "/series",
+      "status": 500,
+      "origin": "https://writer.example.test",
+      "body": {
+        "error": {
+          "code": "internal",
+          "message": "Internal error",
+          "details": null
+        }
+      }
+    },
+    {
+      "path": "/series",
+      "status": 200,
+      "origin": "https://writer.example.test",
+      "body": {
+        "series": [
+          {
+            "id": "ser_00000000000a",
+            "owner_id": "usr_alice",
+            "title": "Ashfall",
+            "genre_rubric_id": null,
+            "foundation": {}
+          }
+        ]
+      }
+    },
+    {
+      "path": "/series/ser_00000000000a",
+      "status": 200,
+      "origin": "https://writer.example.test",
+      "body": {
+        "series": {
+          "id": "ser_00000000000a",
+          "owner_id": "usr_alice",
+          "title": "Ashfall",
+          "genre_rubric_id": null,
+          "foundation": {}
+        },
+        "books": [
+          {
+            "id": "bk_00000000000a",
+            "series_id": "ser_00000000000a",
+            "title": "The Third Bell",
+            "status": "drafting",
+            "ordinal": 1,
+            "author_id": "usr_alice",
+            "language": "English",
+            "label": null
+          }
+        ]
+      }
+    }
+  ]
+}

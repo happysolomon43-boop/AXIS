@@ -50,10 +50,20 @@ test("AXB-0125 AC3 failure matrix never hands off or clears remembered id",async
     [notFound,tree,failed],[internalError,tree,failed],["network",tree,failed],
     [owned,"network",failed],[owned,internalError,failed],
     ...[{},null,{series:null},{series:[{}]},{series:[{...series,foundation:[]}]},{series:[{...series,genre_rubric_id:4}]}].map(body=>[{status:200,body},tree,failed] as [unknown,unknown,string]),
-    [{status:201,body:{series:[]}},tree,failed],
+    [{status:201,body:{series:[]}},tree,failed], [owned,{status:201,body:tree.body},failed],
     ...[{},null,{series,books:null},{series:{...series,id:"wrong"},books:[]},{series,books:[{...book,status:"unknown"}]},
       {series,books:[{...book,series_id:"wrong"}]},{series,books:[{...book,ordinal:1.2}]},{series,books:[{...book,label:4}]}].map(body=>[owned,{status:200,body},failed] as [unknown,unknown,string]),
   ];
+  for(const key of Object.keys(series)) {
+    const missing={...series} as Record<string,unknown>;delete missing[key];
+    variants.push([{status:200,body:{series:[missing]}},tree,failed]);
+    variants.push([{status:200,body:{series:[{...series,[key]:key==="foundation"?null:42}]}},tree,failed]);
+  }
+  for(const key of Object.keys(book)) {
+    const missing={...book} as Record<string,unknown>;delete missing[key];
+    variants.push([owned,{status:200,body:{series,books:[missing]}},failed]);
+    variants.push([owned,{status:200,body:{series,books:[{...book,[key]:key==="ordinal"?"1":42}]}},failed]);
+  }
   type Reply={status:number;body:unknown}|"network";
   for(const [first,second,message] of variants){
     localStorage.setItem(key,series.id);
@@ -65,7 +75,7 @@ test("AXB-0125 AC3 failure matrix never hands off or clears remembered id",async
     expect(screen.getByRole("button",{name:"Try again"})).toBeInTheDocument();
     expect(ui.container.querySelector('[data-surface="onboarding"],[data-surface="shell"]')).toBeNull();
     expect(localStorage.getItem(key)).toBe(series.id);
-    expect(calls.map(c=>c.method)).toEqual(calls.map(()=> "GET"));
+    expect(calls.every(c=>c.method==="GET")).toBe(true);
     expect(document.body).toHaveFocus();
     cleanup();localStorage.clear();
   }
