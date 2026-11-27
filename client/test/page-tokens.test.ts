@@ -3,7 +3,7 @@ import page from "../src/styles/page.css?raw";
 import tokens from "../src/styles/tokens.css?raw";
 
 const pairs = [
-  ["literary", "light", "#F8F8F6", "#1E1F21", 15.5], ["literary", "dark", "#17181A", "#D4D0C6", 11.5], ["literary", "sepia", "#EDE3CE", "#382F24", 10.3],
+  ["literary", "light", "#F8F8F6", "#1E1F21", 15.5], ["literary", "dark", "#17181A", "#D4D0C6", 11.5], ["literary", "sepia", "#EDE3CE", "#382F23", 10.3],
   ["modern", "light", "#FCFCFD", "#17191C", 17.2], ["modern", "dark", "#0F1113", "#DDE0E3", 14.3], ["modern", "sepia", "#F0E6D6", "#33291F", 11.5],
   ["warm", "light", "#FBF8F2", "#2A2622", 14.2], ["warm", "dark", "#1C1916", "#E0D6C6", 12.2], ["warm", "sepia", "#E9DCC1", "#2F261B", 10.9],
 ] as const;
@@ -15,7 +15,7 @@ const profiles = {
 const dark = { literary: { lh: "1.60", weight: "380", tracking: "0.01em" }, modern: { lh: "1.80", tracking: "0.01em" }, warm: { lh: "1.67", weight: "380" } };
 const colors = {
   "surface-shell": ["#ECEBE6", "#0B0C0E", "#D8CAAD"], "surface-raised": ["#FCFCFA", "#0E1012", "#F6EEDD"],
-  "border-hair": ["#D3D1CA", "#26292D", "#BFAF8F"], "border-leaf": ["#A3A29C", "#45494E", "#968A6E"],
+  "border-hair": ["#D3D1CA", "#26292D", "#BFAF8F"], "border-leaf": ["#A3A29C", "#484C51", "#968A6E"],
   "text-primary": ["#1B1C1E", "#D9D6CD", "#2B2418"], "text-secondary": ["#4A4D52", "#A9A79F", "#4F4636"],
   presence: ["#B26F06", "#F0B24A", "#9A5C00"], "presence-tint": ["#F4DFB0", "#5A4520", "#E8C77A"],
   "pencil-tint": ["#DCE7F2", "#1B2733", "#C8D0D2"], "severity-break": ["#B42318", "#F2766B", "#A31F14"],
@@ -43,7 +43,11 @@ test("AXB-0039 AC3 checks exact page and existing tokens and published rounded c
     expect(actual).toEqual({ "--ax-page-paper": paper, "--ax-page-ink": ink, ...overrides });
     // BC-9's published values are rounded to the nearest tenth, not truncated.
     const actualRatio = ratio(paper, ink);
-    expect.soft(actualRatio, `${name} ${theme} absolute contrast`).toBeGreaterThanOrEqual(4.5);
+    expect.soft(actualRatio, `${name} ${theme} absolute contrast`).toBeGreaterThanOrEqual(10.3);
+    const themeTokens = declarations(tokens, theme === "light" ? ':root, :root[data-theme="light"]' : `:root[data-theme="${theme}"]`);
+    const edge = themeTokens["--ax-color-border-leaf"];
+    expect.soft(ratio(edge, paper), `${name} ${theme} leaf vs paper`).toBeGreaterThanOrEqual(2);
+    expect.soft(ratio(edge, themeTokens["--ax-color-surface-shell"]), `${name} ${theme} leaf vs shell`).toBeGreaterThanOrEqual(2);
     expect.soft(Math.round(actualRatio * 10) / 10, `${name} ${theme}`).toBeGreaterThanOrEqual(floor);
   }
   for (const [i, theme] of ["light", "dark", "sepia"].entries()) {

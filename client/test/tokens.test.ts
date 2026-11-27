@@ -8,7 +8,7 @@ const themeTokens = [
   ["ax-color-surface-shell", "#ECEBE6", "#0B0C0E", "#D8CAAD"],
   ["ax-color-surface-raised", "#FCFCFA", "#0E1012", "#F6EEDD"],
   ["ax-color-border-hair", "#D3D1CA", "#26292D", "#BFAF8F"],
-  ["ax-color-border-leaf", "#A3A29C", "#45494E", "#968A6E"],
+  ["ax-color-border-leaf", "#A3A29C", "#484C51", "#968A6E"],
   ["ax-color-border-control", "#7E8186", "#72757A", "#7A6D55"],
   ["ax-color-text-primary", "#1B1C1E", "#D9D6CD", "#2B2418"],
   ["ax-color-text-secondary", "#4A4D52", "#A9A79F", "#4F4636"],
