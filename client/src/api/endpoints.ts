@@ -1,5 +1,5 @@
 import { ApiError, request } from "./http";
-import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
+import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, VersionRow, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackRequest, PullBackWritten, RestoreWritten, SeriesRow, SeriesTree, VersionText, VersionWritten } from "./types";
 
 export function listSeries(): Promise<SeriesRow[]>;
 export function listSeries(expectedSuccessStatus: 200): Promise<SeriesRow[]>;
@@ -89,7 +89,8 @@ export function restoreVersion(chapterId: string, versionId: string): Promise<Re
 
 export async function pullBackChapter(chapterId: string, expectedActiveVersionId?: string): Promise<PullBackWritten> {
   const path = "/chapters/" + encodeURIComponent(chapterId) + "/pull-back";
-  const result = await request<unknown>("POST", path, expectedActiveVersionId === undefined ? undefined : {expected_active_version_id: expectedActiveVersionId}, 200);
+  const body: PullBackRequest | undefined = expectedActiveVersionId === undefined ? undefined : {expected_active_version_id: expectedActiveVersionId};
+  const result = await request<unknown>("POST", path, body, 200);
   if (!exactObject(result, ["chapter", "active_version_id"]) ||
       !exactObject(result.chapter, ["id", "book_id", "order_key"]) ||
       typeof result.chapter.id !== "string" || !/^ch_[0-9a-f]{12}$/.test(result.chapter.id) || result.chapter.id !== chapterId ||

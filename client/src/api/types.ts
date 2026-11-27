@@ -43,6 +43,8 @@ export type ChapterSync = {
   same: boolean;
 };
 
+export type PullBackRequest = { expected_active_version_id: string };
+export type PullBackConflictReason = "released_book" | "active_changed" | "base_choice_required";
 export type PullBackWritten = { chapter: ChapterRow; active_version_id: string };
 
 export type ChapterListItem = ChapterRow & {

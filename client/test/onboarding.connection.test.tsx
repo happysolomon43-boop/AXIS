@@ -17,7 +17,8 @@ test("AXB-0125 AC1 verified empty Bob opens only Onboarding",async()=>{
   direct();vi.stubEnv("VITE_AXIS_USER","usr_bob");
   const {calls}=mockApi([{method:"GET",path:list,reply:empty}]);
   render(<App/>);
-  expect(await screen.findByRole("textbox",{name:"Title"})).toHaveFocus();
+  const title=await screen.findByRole("textbox",{name:"Title"});
+  await waitFor(()=>expect(title).toHaveFocus());
   expect(calls.map(c=>[c.method,c.path,c.headers.get("x-axis-user")])).toEqual([["GET",list,"usr_bob"]]);
 });
 test("AXB-0125 AC2 absent, unmatched and matching remembered IDs",async()=>{
