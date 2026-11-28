@@ -586,7 +586,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     handledBaseToken.current = token;
     const s = current.current;
     const view = editor.current;
-    if (!mounted.current || !view || s.state !== "ready" || dirty(s) || due(s) || s.phase !== null ||
+    if (!mounted.current || !view || s.state !== "ready" || dirty(s) || s.phase !== null ||
         s.stopped || s.capturing || s.autosaveInFlight || ordinary.current.active !== 0) return;
     const doc = view.state.doc;
     const raw = s.persistedDoc && sameContentDoc(s.doc, s.persistedDoc) && s.persistedRaw !== null ? s.persistedRaw : s.baselineRaw;
@@ -597,7 +597,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
       return mounted.current && generation.current === number && editor.current === view &&
         view.state.doc === doc && baseGeneration.current === checkGeneration &&
         latestSyncToken.current === token && ordinary.current === activity && activity.active === 0 &&
-        live.state === "ready" && live.doc === original && !dirty(live) && !due(live) && live.phase === null &&
+        live.state === "ready" && live.doc === original && !dirty(live) && live.phase === null &&
         !live.stopped && !live.capturing && !live.autosaveInFlight &&
         (live.persistedDoc && sameContentDoc(live.doc, live.persistedDoc) && live.persistedRaw !== null ? live.persistedRaw : live.baselineRaw) === raw;
     };

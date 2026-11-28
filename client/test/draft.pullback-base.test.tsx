@@ -55,7 +55,7 @@ test("D19 preserves D18 generation invalidation after typing and undo restore cl
   expect(ui.view.state.doc.eq(initial)).toBe(true);expect(ui.root).toHaveAttribute("data-state","clean");
   await act(async()=>pending.resolve(reply(nextDetail)));
   edit(ui.view);await advance(2000);
-  expect(ui.calls.find(c=>c.method==="PUT")?.body).toEqual({content:"River.!",base_version:V,base_revision:1,editor_document:expect.any(Array)});
+  expect(ui.calls.find(c=>c.method==="PUT")?.body).toEqual({content:"River.!",base_version:V,base_revision:1,editor_document:expect.any(Array),paragraph_lineage:[]});
   expect(ui.onEditorReady).toHaveBeenCalledTimes(1);
  }finally{ui.unmount();vi.clearAllTimers();vi.useRealTimers();}
 });

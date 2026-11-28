@@ -73,7 +73,7 @@ test("AC3 autosaves on idle, unlocks after success, observes the minimum gap, an
   expect(ui.puts()).toHaveLength(0);
   await advance(1);
   expect(ui.puts()).toHaveLength(1);
-  expect(ui.puts()[0].body).toEqual({ content: edited, base_version: b, base_revision: 0 , editor_document: expect.any(Array)});
+  expect(ui.puts()[0].body).toEqual({ content: edited, base_version: b, base_revision: 0 , editor_document: expect.any(Array),paragraph_lineage:[]});
   expect(ui.root).toHaveAttribute("data-autosave", "saving");
   expect(ui.part("editor")).toHaveAttribute("contenteditable", "true");
   await act(async () => { pending.resolve(reply(putOk(1))); });
@@ -90,7 +90,7 @@ test("AC3 autosaves on idle, unlocks after success, observes the minimum gap, an
   await advance(4899);
   expect(ui.puts()).toHaveLength(1);
   await advance(1);
-  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: b, base_revision: 1 , editor_document: expect.any(Array)});
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: b, base_revision: 1 , editor_document: expect.any(Array),paragraph_lineage:[]});
   ui.unmount();
   vi.useRealTimers();
 
@@ -116,7 +116,7 @@ test("AC3 autosaves on idle, unlocks after success, observes the minimum gap, an
   expect(ui.root).toHaveAttribute("data-state", "clean");
   expect(ui.root).toHaveAttribute("data-autosave", "pending");
   await advance(5000);
-  expect(ui.puts()[2].body).toEqual({ content: detailText.version!.content, base_version: b, base_revision: 1 , editor_document: expect.any(Array)});
+  expect(ui.puts()[2].body).toEqual({ content: detailText.version!.content, base_version: b, base_revision: 1 , editor_document: expect.any(Array),paragraph_lineage:[]});
   expect(ui.root).toHaveAttribute("data-autosave", "idle");
 
   edit(view);
@@ -142,7 +142,7 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
   expect(ui.root).toHaveAttribute("data-autosave", "saved");
   edit(ui.view(), "?");
   await advance(5000);
-  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: b, base_revision: 3 , editor_document: expect.any(Array)});
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: b, base_revision: 3 , editor_document: expect.any(Array),paragraph_lineage:[]});
   ui.unmount();
   vi.useRealTimers();
 
@@ -194,7 +194,7 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
     expect(ui.root).toHaveAttribute("data-autosave", "idle");
     edit(ui.view(), "?");
     await advance(2000);
-    expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 , editor_document: expect.any(Array)});
+    expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 , editor_document: expect.any(Array),paragraph_lineage:[]});
     ui.unmount();
     vi.useRealTimers();
   }
@@ -236,7 +236,7 @@ test("AC4 adopts matching conflicts, stops unresolved ones, and settles the head
   expect(ui.root).toHaveAttribute("data-autosave", "idle");
   edit(ui.view(), "?");
   await advance(2000);
-  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 , editor_document: expect.any(Array)});
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 , editor_document: expect.any(Array),paragraph_lineage:[]});
 });
 
 test.each(["save", "send"])("%s waits for a failing autosave and leaves the intended text in the editor", async action => {

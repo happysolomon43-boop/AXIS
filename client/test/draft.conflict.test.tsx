@@ -57,7 +57,7 @@ test("AC2 keeps the local text through Save and retains the conflict after a fai
   expect(ui.onLockChange.mock.calls).toEqual([[true], [false]]);
   edit(ui.view(), "?");
   await advance(2000);
-  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 , editor_document: expect.any(Array)});
+  expect(ui.puts()[1].body).toEqual({ content: edited + "?", base_version: c, base_revision: 0 , editor_document: expect.any(Array),paragraph_lineage:[]});
   ui.unmount();
   vi.useRealTimers();
 
@@ -118,7 +118,7 @@ test("AC3 reloads the version followed by the head, then remounts and focuses th
     await advance(2000);
     expect(ui.puts()[1].body).toEqual({
       content: head.draft === null ? edited : "# Title\n\nOne\n\n---\n\nTwo?!",
-      base_version: d, base_revision: head.draft?.revision ?? 0, editor_document: expect.any(Array)
+      base_version: d, base_revision: head.draft?.revision ?? 0, editor_document: expect.any(Array),paragraph_lineage:[]
     });
     ui.unmount();
     vi.useRealTimers();

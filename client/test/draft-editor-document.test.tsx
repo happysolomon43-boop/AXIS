@@ -17,7 +17,7 @@ const sync={state:"draft_only" as const,same:false}, base={...detail,active_vers
 const split:EditorDocument=[{kind:"heading",text:"North",paragraph_id:null},{kind:"paragraph",text:"Riv",paragraph_id:B},{kind:"paragraph",text:"er.",paragraph_id:P}];
 const initial=editorWorkingState(base);
 function stored(document=split,content=splitRaw,revision=1){
-  return editorWorkingState(base,{draft:{base_version:V,revision,content,blocks:[{ordinal:1,kind:"heading",text:"North"},{ordinal:2,kind:"paragraph",text:"Riv"},{ordinal:3,kind:"paragraph",text:"er."}]},sync,editor_document:document});
+  return editorWorkingState(base,{draft:{base_version:V,revision,content,blocks:[{ordinal:1,kind:"heading",text:"North"},{ordinal:2,kind:"paragraph",text:"Riv"},{ordinal:3,kind:"paragraph",text:"er."}]},sync,editor_document:document,paragraph_lineage:[{kind:"split",old_id:B,new_id:document[2]!.paragraph_id!}]});
 }
 const ack=(revision:number)=>({status:200,body:{chapter:rowA,base_version:V,revision,sync}});
 const conflict={status:409,body:{error:{code:"conflict",message:"Draft is out of date",details:{reason:"revision",current_version:V,current_revision:1}}}};
@@ -37,7 +37,7 @@ test("AC1 split autosave and reopen with exact persisted identity",async()=>{
   const ui=mount({status:200,body:initial},ack(1));await ui.loaded();expect(ui.calls).toHaveLength(1);
   fakeClock();const view=ui.view();const at=view.state.doc.firstChild!.nodeSize+4;
   act(()=>view.dispatch(view.state.tr.split(at)));expect(docToEditorDocument(view.state.doc)).toEqual(split);
-  await advance(2000);expect(ui.calls[1].body).toEqual({content:splitRaw,base_version:V,base_revision:0,editor_document:split});
+  await advance(2000);expect(ui.calls[1].body).toEqual({content:splitRaw,base_version:V,base_revision:0,editor_document:split,paragraph_lineage:[{kind:"split",old_id:B,new_id:P}]});
   expect(ui.root).toHaveAttribute("data-autosave","saved");ui.unmount();vi.useRealTimers();
   const reopened=mount({status:200,body:stored()});await reopened.loaded();expect(docToEditorDocument(reopened.view().state.doc)).toEqual(split);expect(reopened.calls).toHaveLength(1);expect(reopened.part("editor")).toHaveFocus();
 });
@@ -48,7 +48,7 @@ test("AC2 identity-only change keeps raw companion and newer edit stays pending"
   act(()=>v.dispatch(v.state.tr.setNodeMarkup(pos,undefined,{block_uid:null})));
   expect(ui.root).toHaveAttribute("data-state","clean");expect(ui.root).toHaveAttribute("data-autosave","pending");expect(ui.part("autosave-dot")).not.toBeNull();
   expect(ui.part("save")).toHaveAttribute("aria-disabled","true");expect(ui.lock).toHaveBeenLastCalledWith(true);
-  await advance(2000);expect(ui.root).toHaveAttribute("data-autosave","saving");expect(ui.calls[1].body).toEqual({content:raw,base_version:V,base_revision:0,editor_document:[{kind:"heading",text:"North",paragraph_id:null},{kind:"paragraph",text:"River.",paragraph_id:P}]});
+  await advance(2000);expect(ui.root).toHaveAttribute("data-autosave","saving");expect(ui.calls[1].body).toEqual({content:raw,base_version:V,base_revision:0,editor_document:[{kind:"heading",text:"North",paragraph_id:null},{kind:"paragraph",text:"River.",paragraph_id:P}],paragraph_lineage:[]});
   act(()=>v.dispatch(v.state.tr.insertText("!",v.state.doc.content.size-1)));const live=v.state.doc,selection=v.state.selection;
   await act(async()=>pending.resolve(ack(1)));expect(ui.root).toHaveAttribute("data-autosave","pending");expect(v.state.doc).toBe(live);expect(v.state.selection.eq(selection)).toBe(true);expect(ui.ready).toHaveBeenCalledTimes(1);expect(ui.calls).toHaveLength(2);
   expect(ui.calls.filter(c=>c.method==="POST")).toHaveLength(0);
@@ -87,7 +87,7 @@ test("AC4/5 allocation failure retains content, selection and focus, draws exact
   for(const [ink,shell] of [["#1B1C1E","#ECEBE6"],["#D9D6CD","#0B0C0E"],["#2B2418","#D8CAAD"]]){const a=luminance(ink),b=luminance(shell);expect((Math.max(a,b)+.05)/(Math.min(a,b)+.05)).toBeGreaterThanOrEqual(7);}
 });
 
-const legacyHead=editorWorkingState(base,{draft:{base_version:V,revision:1,content:raw,blocks:base.blocks.map(({ordinal,kind,text})=>({ordinal,kind,text}))},sync,editor_document:null});
+const legacyHead=editorWorkingState(base,{draft:{base_version:V,revision:1,content:raw,blocks:base.blocks.map(({ordinal,kind,text})=>({ordinal,kind,text}))},sync,editor_document:null,paragraph_lineage:null});
 test("AC1 Retry opens a legacy raw companion without writing; identity capability fails closed",async()=>{
   const ui=mount((_,n)=>({status:200,body:n===0?{...legacyHead,editor_document:undefined}:legacyHead}));
   await waitFor(()=>expect(ui.root).toHaveAttribute("data-state","failed"));

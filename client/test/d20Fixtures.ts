@@ -26,7 +26,7 @@ export const working: EditorWorkingState = {
   chapter, version: { ...versionFields(rows[0]), content: "" }, active_version_id: v2, blocks: [], scenes: [],
   draft: { base_version: v3, revision: 1, content: head,
     blocks: [{ ordinal: 1, kind: "paragraph", text: head, block_uid: null }] },
-  sync: { state: "edited", same: false }, editor_document: null,
+  sync: { state: "edited", same: false }, editor_document: null,paragraph_lineage:null,
 };
 export const binderChapter: ChapterListItem = {
   ...chapterA, ...chapter, title: "Ashfall", version_id: v3, active_version_id: v2, sync: working.sync,
@@ -49,7 +49,7 @@ export const text = (id: string, content = id === v1 ? rawV1 : id === v2 ? rawV2
 export const ok = (body: unknown) => ({ status: 200, body });
 export const proofRoutes = [
   { method: "GET", path: chaptersPath, reply: ok({ chapters: [binderChapter] }) },
-  { method: "GET", path: `${chapterPath}/working-state?view=editor-document`, reply: ok(working) },
+  { method: "GET", path: `${chapterPath}/working-state?view=editor-lineage`, reply: ok(working) },
   { method: "GET", path: `${chapterPath}/history`, reply: ok(history) },
   { method: "GET", path: previewPath(v1), reply: ok(preview(v1)) },
 ];
