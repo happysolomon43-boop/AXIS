@@ -1,5 +1,6 @@
 import { serializeBlocks } from "../editor/model";
-import type { EditorDocument, EditorWorkingState, ChapterDetail, ChapterRow, ChapterSync, WorkingDraftHead, VersionBlock, VersionRow, WorkingState } from "./types";
+import { checkParagraphLineage } from "../editor/paragraphLineage";
+import type { EditorDocument, EditorWorkingState, EditorLineageState, ChapterDetail, ChapterRow, ChapterSync, WorkingDraftHead, VersionBlock, VersionRow, WorkingState } from "./types";
 
 export function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -157,4 +158,11 @@ export function validEditorWorkingState(value: unknown, expectedChapter: string)
   const {editor_document, ...legacy} = value;
   return validWorkingState(legacy, expectedChapter) &&
     (editor_document === null || (legacy.draft !== null && validEditorDocument(editor_document, legacy.draft.content, legacy.draft.blocks)));
+}
+
+export function validEditorLineageState(value:unknown,expectedChapter:string):value is EditorLineageState {
+  if(!exactObject(value,["chapter","version","active_version_id","blocks","scenes","draft","sync","editor_document","paragraph_lineage"]))return false;
+  const {paragraph_lineage,...legacy}=value;
+  return validEditorWorkingState(legacy,expectedChapter) &&
+    (paragraph_lineage===null||(legacy.editor_document!==null&&checkParagraphLineage(paragraph_lineage,legacy.editor_document)));
 }
