@@ -10,13 +10,15 @@ import { history, undo, redo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { copy } from "../copy";
 import { blocksToDoc, editorDocumentToDoc, type EditorBlock } from "./model";
-import type { EditorDocument } from "../api/types";
+import type { EditorDocument, ParagraphLineageRecord } from "../api/types";
 import { createParagraphIdentity, ParagraphAllocationError, type DraftIdentityOptions } from "./paragraphIdentity";
 
 type Props = {
   blocks: EditorBlock[];
   draftIdentity?: DraftIdentityOptions;
   restoredDocument?: EditorDocument | null;
+  restoredLineage?:readonly ParagraphLineageRecord[];
+  onLineageReader?:(read:()=>ParagraphLineageRecord[])=>void;
   preparedIdentity?: ReturnType<typeof createParagraphIdentity>;
   preparedDocument?: Node;
   onIdentityFailure?: () => void;
@@ -26,21 +28,27 @@ type Props = {
   onDispose?: (view: EditorView) => void;
 };
 
-export function Editor({ blocks, editable, onDocChange, onReady, onDispose, draftIdentity, restoredDocument, preparedIdentity, preparedDocument, onIdentityFailure }: Props) {
+export function Editor({ blocks, editable, onDocChange, onReady, onDispose, draftIdentity, restoredDocument, preparedIdentity, preparedDocument, onIdentityFailure, restoredLineage, onLineageReader }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const initial = useRef(blocks);
-  const callbacks = useRef({ onDocChange, onReady, onDispose, onIdentityFailure });
-  callbacks.current = { onDocChange, onReady, onDispose, onIdentityFailure };
+  const callbacks = useRef({ onDocChange, onReady, onDispose, onIdentityFailure, onLineageReader });
+  callbacks.current = { onDocChange, onReady, onDispose, onIdentityFailure, onLineageReader };
   const canEdit = useRef(editable);
   canEdit.current = editable;
 
   useLayoutEffect(() => {
-    const identity = preparedIdentity ?? createParagraphIdentity(draftIdentity);
+    const historyPlugin=history();
+    const identity=preparedIdentity??createParagraphIdentity(draftIdentity?{
+      ...draftIdentity,restoredLineage:restoredLineage??[],
+      isHistoryReplay:tr=>tr.getMeta(historyPlugin)!==undefined,
+    }:undefined);
+    const initialDoc=preparedIdentity&&preparedDocument?preparedDocument:
+      identity.initialize(preparedDocument??(restoredDocument?editorDocumentToDoc(restoredDocument):blocksToDoc(initial.current)));
     const view = new EditorView(host.current!, {
       state: EditorState.create({
-        doc: preparedDocument ?? identity.initialize(restoredDocument ? editorDocumentToDoc(restoredDocument) : blocksToDoc(initial.current)),
-        plugins: [history(), keymap({ "Mod-z": undo, "Mod-y": redo, "Shift-Mod-z": redo }), keymap(baseKeymap), identity.plugin],
+        doc: initialDoc,
+        plugins: [historyPlugin, keymap({ "Mod-z": undo, "Mod-y": redo, "Shift-Mod-z": redo }), keymap(baseKeymap), identity.plugin],
       }),
       editable: () => canEdit.current,
       attributes: {
@@ -62,6 +70,7 @@ export function Editor({ blocks, editable, onDocChange, onReady, onDispose, draf
       },
     });
     viewRef.current = view;
+    callbacks.current.onLineageReader?.(()=>identity.lineage(view.state));
     callbacks.current.onReady?.(view);
     return () => {
       viewRef.current = null;
