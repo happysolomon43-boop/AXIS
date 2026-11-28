@@ -94,13 +94,15 @@ test("AXB-0078 AC3 applies the current sync projection from Save and Send", asyn
 
 test("AXB-0078 AC4 preserves the chip across an old autosave reply and uses receipt sync after a lost Save reply", async () => {
   const expected = versionChip({ version_id: detailText.version!.id, active_version_id: detailText.active_version_id });
-  const old = mountDraft({ put: reply(putOk(1)) });
+  const {sync: _ignored, ...oldAck}=putOk(1);
+  const old = mountDraft({ put: reply(oldAck) });
   await old.loaded();
   expect(chip(old)).toBe(expected);
   fakeClock();
   edit(old.view());
   await advance(2000);
   expect(chip(old)).toBe(expected);
+  expect(old.root).toHaveAttribute("data-autosave","failed");
   expect(requests(old.calls)).toEqual([...openReads, "PUT " + draftPath]);
   old.unmount();
   vi.useRealTimers();

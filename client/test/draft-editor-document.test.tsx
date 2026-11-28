@@ -8,7 +8,8 @@ import {A,V,book,rowA,chapterPath,draftPath,detail} from "./d18Fixtures";
 import {workingPath,editorWorkingState} from "./writeFixtures";
 import {mockApi,deferred} from "./helpers";
 import {advance,fakeClock} from "./draftFixtures";
-import {readFileSync} from "node:fs";
+import css from "../src/styles/draft-identity.css?raw";
+import tokens from "../src/styles/tokens.css?raw";
 const P="dp_00000000-0000-4000-8000-000000000001", Q="dp_00000000-0000-4000-8000-000000000002", B="b_000000000002";
 const raw="# North\r\n\r\nRiver.\n", splitRaw="# North\n\nRiv\n\ner.";
 const sync={state:"draft_only" as const,same:false}, base={...detail,active_version_id:null,version:{...detail.version!,content:raw},scenes:[],blocks:[{...detail.blocks[0],kind:"heading" as const,text:"North"},{...detail.blocks[0],ordinal:2,block_uid:B,text:"River."}]};
@@ -77,7 +78,6 @@ test("AC4/5 allocation failure retains content, selection and focus, draws exact
     ui.unmount();vi.clearAllTimers();vi.useRealTimers();uuid.mockRestore();
   }
   delete document.documentElement.dataset.theme;delete document.documentElement.dataset.profile;
-  const css=readFileSync(new URL("../src/styles/draft-identity.css",import.meta.url),"utf8"),tokens=readFileSync(new URL("../src/styles/tokens.css",import.meta.url),"utf8");
   for(const token of css.matchAll(/var\((--[^)]+)\)/g))expect(tokens).toContain(token[1]+":");
   for(const decl of ["position: sticky","inset-block-end: 0","z-index: var(--ax-z-shell)","box-sizing: border-box","inline-size: 100%","margin: 0","min-block-size: var(--ax-size-status-line)","padding-block: var(--ax-space-2)","padding-inline: var(--ax-space-6)","background: var(--ax-color-surface-shell)","color: var(--ax-color-text-primary)","border-block-start: 1px solid var(--ax-color-border-hair)","border-radius: 0","box-shadow: none","font-family: var(--ax-type-family-chrome)","font-size: 0.875rem","line-height: 1.25rem","font-weight: 400","letter-spacing: 0","text-align: start","overflow-wrap: anywhere","@media (max-width: 767px)","font-size: 0.9375rem","line-height: 1.375rem","@media (forced-colors: active)","background: Canvas","color: CanvasText","border-block-start-color: CanvasText"])expect(css).toContain(decl);
   expect(css).not.toMatch(/animation|transition|@keyframes|opacity|outline|#[0-9a-f]{3,8}\b|(?:^|\s)block-size:/i);
