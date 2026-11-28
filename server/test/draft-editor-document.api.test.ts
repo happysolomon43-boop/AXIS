@@ -1,8 +1,9 @@
-import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createChapterWithFirstVersion } from "../src/corpus/repo.js";
 import { makePool, resetDb } from "./helpers.js";
 import { seedSeries } from "./seed.js";
+import * as syncReader from "../src/sync/read.js";
 import { state } from "./namedCutsFixtures.js";
 
 const pool=makePool(), owner={"x-axis-user":"usr_aa"}, foreign={"x-axis-user":"usr_bb"};
@@ -18,7 +19,7 @@ beforeEach(async()=>{
   document=[{kind:"heading",text:"North",paragraph_id:null},{kind:"paragraph",text:"Riv",paragraph_id:uid},{kind:"paragraph",text:"er.",paragraph_id:P}];
   app=buildApp({pool});
 });
-afterEach(()=>app.close());
+afterEach(async()=>{vi.restoreAllMocks();await app.close()});
 afterAll(async()=>{await resetDb(pool);await pool.end()});
 const body=(revision=0)=>({content,base_version:base,base_revision:revision,editor_document:document});
 const put=(payload:object|string,headers:Record<string,string>=owner,chapter=id)=>app.inject({method:"PUT",url:"/chapters/"+chapter+"/draft",headers,payload});
@@ -72,4 +73,17 @@ test("read AC3 invalid persisted data fails internally, owner check precedes val
   expect((await get(undefined,foreign)).statusCode).toBe(404);
   expect((await get("/working-state")).statusCode).toBe(200);
   expect(await state(pool)).toEqual(before);
+});
+
+test("write AC4 rolls back content, document and revision together when sync projection fails",async()=>{
+  expect((await put(body())).statusCode).toBe(200);
+  const before=await state(pool);
+  const changed=[{kind:"paragraph",text:"Other text.",paragraph_id:"dp_00000000-0000-4000-8000-000000000002"}];
+  const read=vi.spyOn(syncReader,"readChapterSync");
+  read.mockRejectedValueOnce(new Error("sync projection failed"));
+  const result=await put({content:"Other text.",base_version:base,base_revision:1,editor_document:changed});
+  expect(result.statusCode).toBe(500);
+  expect(result.json()).toEqual({error:{code:"internal",message:"Internal error",details:null}});
+  expect(await state(pool)).toEqual(before);
+  expect((await get()).json()).toMatchObject({editor_document:document,draft:{content,revision:1,base_version:base}});
 });
