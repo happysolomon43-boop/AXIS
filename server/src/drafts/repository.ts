@@ -105,8 +105,11 @@ export type WorkingState = ChapterDetail & { draft: WorkingDraftHead | null; syn
 
 export type EditorWorkingState = WorkingState & { editor_document: EditorDocument | null };
 
-export function getWorkingState(pool: Pool, owner: string, id: string): Promise<WorkingState>;
 export type EditorLineageState = EditorWorkingState & { paragraph_lineage: ParagraphLineage | null };
+
+export function getWorkingState(pool: Pool, owner: string, id: string): Promise<WorkingState>;
+export function getWorkingState(pool: Pool, owner: string, id: string, editorDocument: boolean): Promise<WorkingState | EditorWorkingState>;
+export function getWorkingState(pool: Pool, owner: string, id: string, editorDocument: "editor-lineage"): Promise<EditorLineageState>;
 
 export function getWorkingState(pool: Pool, owner: string, id: string, editorDocument: boolean | "editor-lineage"): Promise<WorkingState | EditorWorkingState | EditorLineageState>;
 export function getWorkingState(pool: Pool, owner: string, id: string, editorDocument: boolean | "editor-lineage" = false): Promise<WorkingState | EditorWorkingState | EditorLineageState> {
