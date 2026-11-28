@@ -23,7 +23,7 @@ type Event =
 function structuralEvents(transactions:readonly Transaction[]):Event[] {
   const events:Event[]=[];
   transactions.forEach((tr,transaction)=>tr.steps.forEach((step,i)=>{
-    if(!(step instanceof ReplaceStep)||!step.structure)return;
+    if(!(step instanceof ReplaceStep)||step.toJSON().structure!==true)return;
     const before=tr.docs[i]!, after=tr.docs[i+1]??tr.doc;
     if(step.from===step.to && step.slice.openStart===1 && step.slice.openEnd===1 &&
        step.slice.content.childCount===2 &&

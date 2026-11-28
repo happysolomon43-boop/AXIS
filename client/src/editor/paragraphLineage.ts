@@ -125,7 +125,7 @@ function checkedChanges(value:unknown):LineageChange[] {
     const {kind,key_id,before,after}=item;
     const validSide=(r:unknown):r is RecordValue|null=>r===null||(validRecord(r)&&r.kind===kind&&keyId(r)===key_id);
     if(!validSide(before)||!validSide(after)||sameRecord(before,after))throw new RangeError("Invalid paragraph lineage step");
-    const c={kind,key_id,before:before===null?null:Object.freeze({...before}),after:after===null?null:Object.freeze({...after})};
+    const c:LineageChange={kind,key_id,before:before===null?null:Object.freeze({...before}),after:after===null?null:Object.freeze({...after})};
     if(changes.length&&changeOrder(changes[changes.length-1]!,c)>=0)throw new RangeError("Invalid paragraph lineage step");
     changes.push(Object.freeze(c));
   }
