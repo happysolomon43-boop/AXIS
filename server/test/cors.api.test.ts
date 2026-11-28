@@ -111,7 +111,7 @@ test("AXB-0122 preserves existing Vary tokens and a lone wildcard", async () => 
 test("AXB-0126 AC1 and AC2: Connection one-shot SELECT outage, exact shared trace and no writes", async () => {
   const counts = async () => (await pool.query("SELECT (SELECT count(*) FROM series) AS series, (SELECT count(*) FROM books) AS books, (SELECT count(*) FROM ledger) AS ledger, (SELECT count(*) FROM schema_migrations) AS migrations")).rows;
   const before = await counts();
-  expect(before).toEqual([{series:"1",books:"1",ledger:"0",migrations:"17"}]);
+  expect(before).toEqual([{series:"1",books:"1",ledger:"0",migrations:"18"}]);
   let failed = 0;
   const intercepted = {
     query: pool.query.bind(pool),
@@ -141,5 +141,5 @@ test("AXB-0126 AC1 and AC2: Connection one-shot SELECT outage, exact shared trac
     expect((await pool.query("SELECT id,title FROM series")).rows).toEqual([{id:series.id,title:series.title}]);
     expect((await pool.query("SELECT id,title FROM books")).rows).toEqual([{id:book.id,title:book.title}]);
   } finally { await instance.close(); await resetDb(pool); }
-  expect(await counts()).toEqual([{series:"0",books:"0",ledger:"0",migrations:"17"}]);
+  expect(await counts()).toEqual([{series:"0",books:"0",ledger:"0",migrations:"18"}]);
 });

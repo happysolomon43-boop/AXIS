@@ -37,7 +37,7 @@ test.each([raw,changed,""])("AXB-0138 coherent head projection and unchanged leg
     const unknown=await f.app.inject({method:"GET",url:"/chapters/ch_000000000000/working-state",headers:alice});
     expect(foreign.statusCode).toBe(404);expect(foreign.json()).toEqual(unknown.json());
     expect(await state(pool)).toEqual(before);expect(await labels(pool)).toEqual(named);
-    expect(Number((await pool.query("SELECT count(*) AS n FROM schema_migrations")).rows[0].n)).toBe(17);
+    expect(Number((await pool.query("SELECT count(*) AS n FROM schema_migrations")).rows[0].n)).toBe(18);
   }finally{await f.app.close();}
 });
 

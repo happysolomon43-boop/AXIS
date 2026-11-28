@@ -1,6 +1,6 @@
 import { ApiError, request } from "./http";
-import { exactObject, integer, orderedBlocks, revision, uuidV4, validChapter, validSync, validVersionRow, validWorkingState, validEditorWorkingState, versionId } from "./validation";
-import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackRequest, PullBackWritten, SeriesRow, SeriesTree, VersionText, EditorDocument, EditorWorkingState, WorkingState, WriteOperation, WriteRequest, WriteResult } from "./types";
+import { exactObject, integer, orderedBlocks, revision, uuidV4, validChapter, validSync, validVersionRow, validWorkingState, validEditorWorkingState, validEditorLineageState, versionId } from "./validation";
+import type { SnapshotLifecycle, SnapshotLabelAction, SnapshotLabelResult, CaptureRequest, CaptureResult, ChapterCreated, ChapterDetail, ChapterHistory, ChapterListItem, ChapterSync, NamedSnapshot, DraftDetail, DraftWritten, PullBackRequest, PullBackWritten, SeriesRow, SeriesTree, VersionText, EditorDocument, EditorWorkingState, EditorLineageState, ParagraphLineageRecord, WorkingState, WriteOperation, WriteRequest, WriteResult } from "./types";
 
 export function listSeries(): Promise<SeriesRow[]>;
 export function listSeries(expectedSuccessStatus: 200): Promise<SeriesRow[]>;
@@ -59,9 +59,15 @@ export async function getEditorWorkingState(chapterId: string, bookId?: string):
   return result;
 }
 
-export async function putEditorDraft(chapterId: string, bookId: string, content: string, baseVersion: string, baseRevision: number, document: EditorDocument): Promise<DraftWritten> {
+export async function getEditorLineageState(chapterId:string,bookId?:string):Promise<EditorLineageState> {
+  const result=await request<unknown>("GET", `/chapters/${encodeURIComponent(chapterId)}/working-state?view=editor-lineage`,undefined,200);
+  if(!validEditorLineageState(result,chapterId)||(bookId!==undefined&&result.chapter.book_id!==bookId))throw new ApiError(200,"unreadable");
+  return result;
+}
+
+export async function putEditorDraft(chapterId: string, bookId: string, content: string, baseVersion: string, baseRevision: number, document: EditorDocument, lineage?:readonly ParagraphLineageRecord[]): Promise<DraftWritten> {
   const result = await request<unknown>("PUT", `/chapters/${encodeURIComponent(chapterId)}/draft`, {
-    content, base_version: baseVersion, base_revision: baseRevision, editor_document: document,
+    content, base_version: baseVersion, base_revision: baseRevision, editor_document: document, ...(lineage===undefined?{}:{paragraph_lineage:lineage}),
   }, 200);
   if (!exactObject(result, ["chapter","base_version","revision","sync"]) ||
       !validChapter(result.chapter, chapterId, bookId) || result.base_version !== baseVersion ||

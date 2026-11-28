@@ -12,7 +12,8 @@ const directory = fileURLToPath(new URL("../db/migrations", import.meta.url));
 const down = () => readFile(new URL("../db/rollback/0017_draft_editor_document.down.sql", import.meta.url), "utf8");
 const registrations = async () => (await pool.query("SELECT * FROM schema_migrations ORDER BY filename")).rows;
 const head = async () => (await pool.query("SELECT * FROM chapter_drafts")).rows;
-beforeEach(() => resetDb(pool));
+const lineageDown = () => readFile(new URL("../db/rollback/0018_draft_paragraph_lineage.down.sql", import.meta.url), "utf8");
+beforeEach(async () => { await resetDb(pool); await pool.query(await lineageDown()); });
 afterAll(async () => { await resetDb(pool); await pool.end(); });
 
 test("AC1 preserves legacy raw bytes and rejects invalid JSONB shapes", async () => {
@@ -24,14 +25,14 @@ test("AC1 preserves legacy raw bytes and rejects invalid JSONB shapes", async ()
   try {
     await pool.query("INSERT INTO chapter_drafts(chapter_id,base_version,content,revision) VALUES($1,$2,$3,1)",[chapter.id,version.id,content]);
     const before = await head();
-    expect(await runMigrations(pool,directory)).toEqual([migration]);
-    expect(await head()).toEqual(before.map(row=>({...row,editor_document:null})));
+    expect(await runMigrations(pool,directory)).toEqual([migration,"0018_draft_paragraph_lineage.sql"]);
+    expect(await head()).toEqual(before.map(row=>({...row,editor_document:null,paragraph_lineage:null})));
     expect((await pool.query("SELECT data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='chapter_drafts' AND column_name='editor_document'")).rows).toEqual([{data_type:"jsonb",is_nullable:"YES",column_default:null}]);
     for (const bad of ["{}","null","[]"]) {
       await expect(pool.query("INSERT INTO chapter_drafts(chapter_id,base_version,content,revision,editor_document) VALUES($1,$2,'other',1,$3::jsonb)",[other.chapter.id,other.version.id,bad])).rejects.toMatchObject({
         code:"23514",constraint:"chapter_drafts_editor_document_shape"});
     }
-    expect(await head()).toEqual(before.map(row=>({...row,editor_document:null})));
+    expect(await head()).toEqual(before.map(row=>({...row,editor_document:null,paragraph_lineage:null})));
   } finally { await runMigrations(pool,directory); }
 });
 test("AC2 populated down refuses atomically; immutable append clears the head",async()=>{

@@ -41,7 +41,7 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
     const beforeHistory = await history();
     expect(beforeHistory.versions.map(({ id }) => id)).toEqual([b.version.id, a.version.id]);
     expect(beforeHistory.active_version_id).toBe(a.version.id);
-    expect(before.heads).toEqual([{ chapter_id: chapterId, base_version: b.version.id, revision: 1, content: kept, editor_document: null }]);
+    expect(before.heads).toEqual([{ chapter_id: chapterId, base_version: b.version.id, revision: 1, content: kept, editor_document: null, paragraph_lineage: null }]);
 
     const request = {
       method: "POST" as const, url: `/chapters/${chapterId}/restore`,
@@ -124,5 +124,5 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
     try { await f.app.close(); } finally { await resetDb(pool); }
   }
   expect(await migrations()).toEqual(beforeMigrations);
-  expect(beforeMigrations).toHaveLength(17);
+  expect(beforeMigrations).toHaveLength(18);
 });

@@ -22,7 +22,7 @@ test("AC1 applies all migrations and installs word count and version activation"
     "0008_commit_inputs_activate.sql", "0009_word_count.sql", "0010_chapter_drafts.sql",
     "0011_chapter_pullbacks.sql", "0012_named_cuts.sql", "0013_snapshot_capture_requests.sql", "0014_snapshot_label_lifecycles.sql",
     "0015_restore_checkpoint_labels.sql",
-    "0016_chapter_write_receipts.sql", "0017_draft_editor_document.sql",
+    "0016_chapter_write_receipts.sql", "0017_draft_editor_document.sql", "0018_draft_paragraph_lineage.sql",
   ]);
   expect((await pool.query("SELECT axis_word_count('abc') AS count")).rows).toEqual([{ count: 1 }]);
   const { rows: [definition] } = await pool.query<{ body: string }>(

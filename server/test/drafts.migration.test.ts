@@ -29,7 +29,7 @@ test("AC1 enforces the head shape, limits, chapter and version references, and p
   await expect(pool.query(insert, [chapter.id, version.id, "abc", 0])).rejects.toMatchObject({ code: "23514" });
   await expect(pool.query(insert, [chapter.id, version.id, "a".repeat(1000001), 1])).rejects.toMatchObject({ code: "23514" });
   await pool.query(insert, [chapter.id, version.id, "abc", 1]);
-  const head = { chapter_id: chapter.id, base_version: version.id, content: "abc", revision: 1, editor_document: null };
+  const head = { chapter_id: chapter.id, base_version: version.id, content: "abc", revision: 1, editor_document: null, paragraph_lineage: null };
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([head]);
   await expect(pool.query(insert, [chapter.id, version.id, "abc", 1])).rejects.toMatchObject({ code: "23505" });
   await expect(pool.query("DELETE FROM chapters WHERE id = $1", [chapter.id])).rejects.toMatchObject({ code: "23503" });
@@ -68,6 +68,7 @@ test("AC2 clears only the version writer's head, supports reset, and rolls back 
   const before = await intakeCounts(pool);
   const down = await readFile(new URL("../db/rollback/0010_chapter_drafts.down.sql", import.meta.url), "utf8");
   try {
+    await pool.query(await readFile(new URL("../db/rollback/0018_draft_paragraph_lineage.down.sql", import.meta.url), "utf8"));
     await pool.query(await readFile(new URL("../db/rollback/0017_draft_editor_document.down.sql", import.meta.url), "utf8"));
     await pool.query(down);
     expect(await intakeCounts(pool)).toEqual(before);
@@ -82,6 +83,6 @@ test("AC2 clears only the version writer's head, supports reset, and rolls back 
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([]);
   await rollbackAll(pool);
   await expectReapplyAll(pool);
-  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows).toEqual([{ count: 17 }]);
+  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows).toEqual([{ count: 18 }]);
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([]);
 });

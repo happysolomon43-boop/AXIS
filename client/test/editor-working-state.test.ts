@@ -3,7 +3,8 @@ import {getEditorWorkingState,getWorkingState,putEditorDraft} from "../src/api/e
 import type {EditorDocument} from "../src/api/types";
 import {mockApi} from "./helpers";
 import {A,book,V,chapterPath,draftPath,rowA,detail,inBook} from "./d18Fixtures";
-import {workingState,workingPath} from "./writeFixtures";
+import {workingState} from "./writeFixtures";
+const workingPath=(path:string)=>path+"/working-state?view=editor-document";
 const P="dp_00000000-0000-4000-8000-000000000001";
 const Q="dp_00000000-0000-4000-8000-000000000002";
 const document:EditorDocument=[{kind:"paragraph",text:"Riv",paragraph_id:P},{kind:"paragraph",text:"er.",paragraph_id:Q}];

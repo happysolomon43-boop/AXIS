@@ -1,4 +1,4 @@
-import type { ChapterDetail, ChapterSync, DraftDetail, EditorDocument, EditorWorkingState, VersionWritten, WorkingState, WriteOperation, WriteResult } from "../src/api/types";
+import type { ChapterDetail, ChapterSync, DraftDetail, EditorDocument, EditorLineageState, ParagraphLineageRecord, VersionWritten, WorkingState, WriteOperation, WriteResult } from "../src/api/types";
 import type { Call } from "./helpers";
 
 type Response = { status: number; body: unknown };
@@ -26,9 +26,9 @@ export function workingState(chapter: ChapterDetail, head?: Pick<DraftDetail, "d
 
 }
 
-export const workingPath = (path: string) => path + "/working-state?view=editor-document";
-export function editorWorkingState(chapter: ChapterDetail, head?: Pick<DraftDetail, "draft" | "sync"> & {editor_document?: EditorDocument | null}): EditorWorkingState {
-  return {...workingState(chapter,head),editor_document:head?.editor_document ?? null};
+export const workingPath = (path: string) => path + "/working-state?view=editor-lineage";
+export function editorWorkingState(chapter: ChapterDetail, head?: Pick<DraftDetail, "draft" | "sync"> & {editor_document?: EditorDocument | null; paragraph_lineage?:ParagraphLineageRecord[]|null}): EditorLineageState {
+  return {...workingState(chapter,head),editor_document:head?.editor_document ?? null,paragraph_lineage:head?.paragraph_lineage??null};
 }
 
 export function workingRead(path: string, chapter: HandlerReply, head?: HandlerReply) {
@@ -37,7 +37,7 @@ export function workingRead(path: string, chapter: HandlerReply, head?: HandlerR
     if (detail === "network" || detail.status !== 200 || !detail.body) return detail;
     const draft = typeof head === "function" ? await head(call, n) : head;
     if (draft === "network" || (draft && draft.status !== 200)) return draft;
-    const state = editorWorkingState(detail.body as ChapterDetail, draft?.body as (DraftDetail & {editor_document?:EditorDocument|null}) | undefined);
+    const state = editorWorkingState(detail.body as ChapterDetail, draft?.body as (DraftDetail & {editor_document?:EditorDocument|null;paragraph_lineage?:ParagraphLineageRecord[]|null}) | undefined);
     if (draft && (!draft.body || typeof draft.body !== "object" || !("draft" in draft.body))) {
       return { status: 200, body: { ...state, draft: undefined } };
     }

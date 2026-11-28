@@ -73,7 +73,7 @@ test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writin
 
   const draftCalls = calls.filter(({ path }) => path === draftPath || path === workingPath(chapterPath));
   expect(draftCalls.map(({ method }) => method)).toEqual(["GET", "PUT", "PUT", "GET"]);
-  const input = { content: edited, base_version: a, base_revision: 0,editor_document:[{kind:"heading",text:"Title",paragraph_id:null},{kind:"paragraph",text:"One!",paragraph_id:detailText.blocks[1].block_uid}] };
+  const input = { content: edited, base_version: a, base_revision: 0,editor_document:[{kind:"heading",text:"Title",paragraph_id:null},{kind:"paragraph",text:"One!",paragraph_id:detailText.blocks[1].block_uid}],paragraph_lineage:[] };
   expect(draftCalls[1].body).toEqual(input);
   expect(draftCalls[2].body).toEqual(input);
   expect(calls.filter(({ method }) => method === "POST")).toHaveLength(0);

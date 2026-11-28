@@ -81,7 +81,7 @@ test.each(["versions", "send"])("%s and autosave honor both Series lock ordering
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error.details).toEqual({ reason: "revision", current_version: base, current_revision: 1 });
     expect(await state(pool)).toEqual({ ...before, heads: [{
-      chapter_id: chapter, base_version: base, revision: 1, content: "Competing manuscript.", editor_document: null,
+      chapter_id: chapter, base_version: base, revision: 1, content: "Competing manuscript.", editor_document: null, paragraph_lineage: null,
     }] });
     expect((await receipt(body.request_id)).json()).toEqual({ receipt: null });
   } finally {
