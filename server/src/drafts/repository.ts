@@ -5,17 +5,23 @@ import { AppError } from "../errors.js";
 import { readChapterSync } from "../sync/read.js";
 import type { ChapterSync } from "../sync/state.js";
 
+import { validateEditorDocument, type EditorDocument } from "./editor-document.js";
 import { projectDraftBlockUids, type WorkingDraftBlock } from "./paragraph-identity.js";
 
 export type DraftBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
 export type DraftHead = { base_version: string; revision: number; content: string; blocks: DraftBlock[] };
 export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync: ChapterSync };
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync: ChapterSync };
-export type DraftInput = { content: string; base_version: string; base_revision: number };
+export type DraftInput = { content: string; base_version: string; base_revision: number; editor_document?: unknown };
 
-export function putDraft(pool: Pool, chapter: ChapterRef, body: DraftInput): Promise<DraftWritten> {
+export function putDraft(pool: Pool, chapter: ChapterRef, body: DraftInput, owner?: string): Promise<DraftWritten> {
   return transaction(pool, "BEGIN", async (client) => {
-    await client.query("SELECT id FROM series WHERE id = $1 FOR NO KEY UPDATE", [chapter.series_id]);
+    const locked = await client.query<{ owner_id: string }>("SELECT owner_id FROM series WHERE id = $1 FOR NO KEY UPDATE", [chapter.series_id]);
+    const actor = owner ?? locked.rows[0]?.owner_id;
+    const owned = actor ? await findOwnedChapter(client, actor, chapter.id) : null;
+    if (!locked.rowCount || owned?.series_id !== chapter.series_id || owned.book_id !== chapter.book_id) {
+      throw new AppError(404, "not_found", "Chapter not found");
+    }
     const chapterRow = await readChapterRow(client, chapter.id);
     const { rows: [current] } = await client.query<{ id: string; revision: number }>(
       `SELECT v.id, COALESCE(d.revision, 0) AS revision
@@ -34,14 +40,22 @@ export function putDraft(pool: Pool, chapter: ChapterRef, body: DraftInput): Pro
       });
     }
 
+    const supplied = Object.prototype.hasOwnProperty.call(body, "editor_document");
+    let document: string | null = null;
+    if (supplied) {
+      const { rows: [segmented] } = await client.query<{ blocks: DraftBlock[] }>("SELECT axis_segment($1) AS blocks", [body.content]);
+      if (!segmented) throw new Error("Missing draft segmentation");
+      document = JSON.stringify(validateEditorDocument(body.editor_document, body.content, segmented.blocks));
+    }
+
     const { rows: [written] } = current.revision === 0
       ? await client.query<{ revision: number }>(
-        "INSERT INTO chapter_drafts (chapter_id, base_version, content, revision) VALUES ($1, $2, $3, 1) RETURNING revision",
-        [chapter.id, body.base_version, body.content],
+        "INSERT INTO chapter_drafts (chapter_id, base_version, content, revision, editor_document) VALUES ($1, $2, $3, 1, $4::jsonb) RETURNING revision",
+        [chapter.id, body.base_version, body.content, document],
       )
       : await client.query<{ revision: number }>(
-        "UPDATE chapter_drafts SET content = $2, revision = revision + 1 WHERE chapter_id = $1 RETURNING revision",
-        [chapter.id, body.content],
+        "UPDATE chapter_drafts SET editor_document = CASE WHEN $3::boolean THEN $4::jsonb WHEN convert_to(content, \'UTF8\') = convert_to($2, \'UTF8\') THEN editor_document ELSE NULL END, content = $2, revision = revision + 1 WHERE chapter_id = $1 RETURNING revision",
+        [chapter.id, body.content, supplied, document],
       );
     if (!written) throw new Error("Draft write returned no row");
     const sync = await readChapterSync(client, chapter.id);
@@ -71,14 +85,29 @@ export function getDraft(pool: Pool, chapter: ChapterRef): Promise<DraftDetail> 
 export type WorkingDraftHead = Omit<DraftHead, "blocks"> & { blocks: WorkingDraftBlock[] };
 export type WorkingState = ChapterDetail & { draft: WorkingDraftHead | null; sync: ChapterSync };
 
-export function getWorkingState(pool: Pool, owner: string, id: string): Promise<WorkingState> {
+export type EditorWorkingState = WorkingState & { editor_document: EditorDocument | null };
+
+export function getWorkingState(pool: Pool, owner: string, id: string): Promise<WorkingState>;
+export function getWorkingState(pool: Pool, owner: string, id: string, editorDocument: boolean): Promise<WorkingState | EditorWorkingState>;
+export function getWorkingState(pool: Pool, owner: string, id: string, editorDocument = false): Promise<WorkingState | EditorWorkingState> {
   return transaction(pool, readOnlyTransaction, async (client) => {
     if (!await findOwnedChapter(client, owner, id)) throw new AppError(404, "not_found", "Chapter not found");
     const detail = await readChapterDetail(client, id);
-    const draft = await readDraftHead(client, id);
+    const head = editorDocument ? (await client.query<DraftHead & { editor_document: unknown }>(
+      "SELECT base_version, revision, content, axis_segment(content) AS blocks, editor_document FROM chapter_drafts WHERE chapter_id = $1", [id],
+    )).rows[0] : undefined;
+    const draft = editorDocument ? (head ? {
+      base_version: head.base_version, revision: head.revision, content: head.content,
+      blocks: head.blocks.map(({ ordinal, kind, text }) => ({ ordinal, kind, text })),
+    } : null) : await readDraftHead(client, id);
     if (draft !== null && draft.base_version !== detail.version?.id) throw new Error("Invalid draft base");
     const sync = await readChapterSync(client, id);
-    return { ...detail, sync, draft: draft === null ? null : {
+    let admitted: EditorDocument | null = null;
+    if (head && draft && head.editor_document !== null) {
+      try { admitted = validateEditorDocument(head.editor_document, draft.content, draft.blocks); }
+      catch { throw new Error("Invalid persisted draft editor document"); }
+    }
+    return { ...detail, sync, ...(editorDocument ? { editor_document: admitted } : {}), draft: draft === null ? null : {
       ...draft, blocks: projectDraftBlockUids(detail.version!.content, draft.content, detail.blocks, draft.blocks),
     } };
   });
