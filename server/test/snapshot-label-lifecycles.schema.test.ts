@@ -59,7 +59,7 @@ test("AXB-0106 AC1–AC3: backfill, constraints, compatible and incompatible rol
    expect((await rows("snapshot_capture_requests"))[0]).toEqual({...legacy,snapshot_id:backfilled.snapshot_id});
    await c.query("INSERT INTO named_cuts(chapter_id,version_id,series_id,l_seq,label) VALUES($1,$2,$3,$4,$5)",[id,a.version.id,f.seriesId,a.version.l_seq,"New label"]);
    expect(await rows("snapshot_label_lifecycles")).toHaveLength(2);
-   expect((await rows("schema_migrations"))).toHaveLength(16);
+   expect((await rows("schema_migrations"))).toHaveLength(17);
   }finally{try{await c.query("ROLLBACK");}finally{c.release();}}
   expect(await state(pool)).toEqual(corpus);expect(await labels(pool)).toEqual(original);
  }finally{await f.app.close();}

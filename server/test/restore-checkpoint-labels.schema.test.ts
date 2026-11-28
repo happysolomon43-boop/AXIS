@@ -139,7 +139,7 @@ test("AXB-0114 AC3: rollback preserves labels and refuses to discard removal sta
     const original = await names(client);
     const live = await lifecycles(client);
     await client.query(await down());
-    expect(migrations).toHaveLength(17);
+    expect(migrations).toHaveLength(18);
     expect(await recorded(client)).toEqual(migrations.filter((row) => row.filename !== filename));
     expect(await names(client)).toEqual(original);
     expect(await lifecycles(client)).toEqual(live);
@@ -179,7 +179,7 @@ test.each([false, true])("AXB-0114 AC3: real runner reapplies 0015 after rollbac
     // The real runner must see the committed rollback records on its own connection.
     await pool.query(scripts.join("\n"));
     expect(await runMigrations(pool, dir)).toEqual(includePrior ? [prior, filename] : [filename]);
-    expect(migrations).toHaveLength(17);
+    expect(migrations).toHaveLength(18);
     expect((await recorded(pool)).map((row) => row.filename)).toEqual(migrations);
     expect(await labels(pool)).toEqual(original);
     expect(original.map((row) => row.version_id).sort()).toEqual([c1, c2].sort());
