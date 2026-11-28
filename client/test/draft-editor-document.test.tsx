@@ -8,8 +8,9 @@ import {A,V,book,rowA,chapterPath,draftPath,detail} from "./d18Fixtures";
 import {workingPath,editorWorkingState} from "./writeFixtures";
 import {mockApi,deferred} from "./helpers";
 import {advance,fakeClock} from "./draftFixtures";
-import css from "../src/styles/draft-identity.css?raw";
-import tokens from "../src/styles/tokens.css?raw";
+import {readFileSync} from "node:fs";
+import {writeResponse} from "./writeFixtures";
+import {nextDetail, V2} from "./d18Fixtures";
 const P="dp_00000000-0000-4000-8000-000000000001", Q="dp_00000000-0000-4000-8000-000000000002", B="b_000000000002";
 const raw="# North\r\n\r\nRiver.\n", splitRaw="# North\n\nRiv\n\ner.";
 const sync={state:"draft_only" as const,same:false}, base={...detail,active_version_id:null,version:{...detail.version!,content:raw},scenes:[],blocks:[{...detail.blocks[0],kind:"heading" as const,text:"North"},{...detail.blocks[0],ordinal:2,block_uid:B,text:"River."}]};
@@ -22,9 +23,9 @@ const ack=(revision:number)=>({status:200,body:{chapter:rowA,base_version:V,revi
 const conflict={status:409,body:{error:{code:"conflict",message:"Draft is out of date",details:{reason:"revision",current_version:V,current_revision:1}}}};
 const path=workingPath(chapterPath);
 type Handler=Parameters<typeof mockApi>[0][number];
-function mount(read:Handler["reply"],put?:Handler["reply"]){
+function mount(read:Handler["reply"],put?:Handler["reply"],extra:Handler[]=[]){
   const ready=vi.fn<(v:EditorView)=>void>(),lock=vi.fn(),written=vi.fn();
-  const api=mockApi([{method:"GET",path,reply:read},...(put?[{method:"PUT",path:draftPath,reply:put}]:[])]);
+  const api=mockApi([{method:"GET",path,reply:read},...(put?[{method:"PUT",path:draftPath,reply:put}]:[]),...extra]);
   const ui=render(<Draft chapterId={A} onEditorReady={ready} onLockChange={lock} onWritten={written}/>);
   const root=ui.container.querySelector<HTMLElement>('[data-surface="draft"]')!;
   const part=(name:string)=>root.querySelector<HTMLElement>('[data-part="'+name+'"]');
@@ -78,9 +79,70 @@ test("AC4/5 allocation failure retains content, selection and focus, draws exact
     ui.unmount();vi.clearAllTimers();vi.useRealTimers();uuid.mockRestore();
   }
   delete document.documentElement.dataset.theme;delete document.documentElement.dataset.profile;
+  const css=readFileSync("src/styles/draft-identity.css","utf8"),tokens=readFileSync("src/styles/tokens.css","utf8");
   for(const token of css.matchAll(/var\((--[^)]+)\)/g))expect(tokens).toContain(token[1]+":");
   for(const decl of ["position: sticky","inset-block-end: 0","z-index: var(--ax-z-shell)","box-sizing: border-box","inline-size: 100%","margin: 0","min-block-size: var(--ax-size-status-line)","padding-block: var(--ax-space-2)","padding-inline: var(--ax-space-6)","background: var(--ax-color-surface-shell)","color: var(--ax-color-text-primary)","border-block-start: 1px solid var(--ax-color-border-hair)","border-radius: 0","box-shadow: none","font-family: var(--ax-type-family-chrome)","font-size: 0.875rem","line-height: 1.25rem","font-weight: 400","letter-spacing: 0","text-align: start","overflow-wrap: anywhere","@media (max-width: 767px)","font-size: 0.9375rem","line-height: 1.375rem","@media (forced-colors: active)","background: Canvas","color: CanvasText","border-block-start-color: CanvasText"])expect(css).toContain(decl);
   expect(css).not.toMatch(/animation|transition|@keyframes|opacity|outline|#[0-9a-f]{3,8}\b|(?:^|\s)block-size:/i);
   function luminance(hex:string){const c=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255).map(x=>x<=0.04045?x/12.92:((x+0.055)/1.055)**2.4);return c[0]*.2126+c[1]*.7152+c[2]*.0722;}
   for(const [ink,shell] of [["#1B1C1E","#ECEBE6"],["#D9D6CD","#0B0C0E"],["#2B2418","#D8CAAD"]]){const a=luminance(ink),b=luminance(shell);expect((Math.max(a,b)+.05)/(Math.min(a,b)+.05)).toBeGreaterThanOrEqual(7);}
+});
+
+const legacyHead=editorWorkingState(base,{draft:{base_version:V,revision:1,content:raw,blocks:base.blocks.map(({ordinal,kind,text})=>({ordinal,kind,text}))},sync,editor_document:null});
+test("AC1 Retry opens a legacy raw companion without writing; identity capability fails closed",async()=>{
+  const ui=mount((_,n)=>({status:200,body:n===0?{...legacyHead,editor_document:undefined}:legacyHead}));
+  await waitFor(()=>expect(ui.root).toHaveAttribute("data-state","failed"));
+  expect(ui.ready).not.toHaveBeenCalled();
+  fireEvent.click(ui.part("try-again")!);await ui.loaded();
+  expect(ui.calls.map(c=>[c.method,c.path])).toEqual([["GET",path],["GET",path]]);
+  expect(docToEditorDocument(ui.view().state.doc)).toEqual([{kind:"heading",text:"North",paragraph_id:null},{kind:"paragraph",text:"River.",paragraph_id:B}]);
+  expect(ui.part("editor")).toHaveFocus();ui.unmount();
+  vi.stubGlobal("crypto",{});
+  try{
+    const missing=mount({status:200,body:initial});
+    await waitFor(()=>expect(missing.root).toHaveAttribute("data-state","failed"));
+    expect(missing.ready).not.toHaveBeenCalled();expect(missing.calls).toHaveLength(1);
+    expect(missing.part("editor-identity-failure")).toBeNull();
+  }finally{vi.unstubAllGlobals();}
+});
+test.each([401,404,500,0,200])("AC4 read failure %s retains existing Retry and one opt-in read",async status=>{
+  const failed=status===0?"network" as const:{status,body:status===200?{...initial,editor_document:[{kind:"paragraph",text:"unrelated",paragraph_id:P}]}:{error:{code:status===401?"auth_required":status===404?"not_found":"internal",message:"fixture",details:null}}};
+  const ui=mount((_,n)=>n===0?failed:{status:200,body:initial});
+  await waitFor(()=>expect(ui.root).toHaveAttribute("data-state","failed"));expect(ui.ready).not.toHaveBeenCalled();
+  fireEvent.click(ui.part("try-again")!);await ui.loaded();expect(ui.calls.map(c=>c.method)).toEqual(["GET","GET"]);
+});
+test.each([400,401,404,413,415,500,0,200,201])("AC4 autosave failure %s retains the exact admitted local editor and existing retry schedule",async status=>{
+  vi.spyOn(globalThis.crypto,"randomUUID").mockReturnValue(P.slice(3) as ReturnType<Crypto["randomUUID"]>);
+  const failure=status===0?"network" as const:{status,body:status===200?{...ack(1).body,revision:2}:status===201?ack(1).body:{error:{code:({400:"validation_failed",401:"auth_required",404:"not_found",413:"payload_too_large",415:"unsupported_media_type",500:"internal"} as Record<number,string>)[status],message:"fixture",details:null}}};
+  const ui=mount({status:200,body:initial},failure);await ui.loaded();fakeClock();
+  const view=ui.view();act(()=>view.dispatch(view.state.tr.split(view.state.doc.firstChild!.nodeSize+4)));
+  const doc=view.state.doc,selection=view.state.selection;
+  await advance(2000);
+  expect(ui.root).toHaveAttribute("data-autosave","failed");
+  expect(ui.part("autosave")).toHaveTextContent("The draft could not be saved.");
+  expect(ui.part("autosave-dot")).not.toBeNull();expect(ui.part("editor-identity-failure")).toBeNull();
+  expect(view.state.doc).toBe(doc);expect(view.state.selection.eq(selection)).toBe(true);expect(view.dom).toHaveFocus();
+  expect(ui.ready).toHaveBeenCalledTimes(1);expect(ui.lock).toHaveBeenLastCalledWith(true);
+  await advance(29999);expect(ui.calls.map(c=>c.method)).toEqual(["GET","PUT"]);
+});
+test.each(["save","send"] as const)("AC3 %s may proceed after an in-flight autosave is proven by exact readback",async action=>{
+  // First allocate the split ID, then use a separate UUID for the ordinary receipt.
+  const allocator=vi.spyOn(globalThis.crypto,"randomUUID");
+  allocator.mockReturnValueOnce(P.slice(3) as ReturnType<Crypto["randomUUID"]>).mockReturnValue(Q.slice(3) as ReturnType<Crypto["randomUUID"]>);
+  const pending=deferred<ReturnType<typeof ack>|typeof conflict>();
+  const operationPath=chapterPath+(action==="save"?"/versions":"/send");
+  const result={chapter:rowA,version:{...nextDetail.version!,source:action==="save"?"draft_edit":"send"},active_version_id:action==="save"?null:V2,sync:action==="save"?sync:{state:"in_book",same:true}};
+  const {content:_unused,...version}=result.version;
+  const ui=mount((_,n)=>({status:200,body:n===0?initial:stored()}),()=>pending.promise,[
+    {method:"POST",path:operationPath,reply:call=>writeResponse(call,{status:201,body:{...result,version}})},
+  ]);
+  await ui.loaded();fakeClock();
+  const view=ui.view();act(()=>view.dispatch(view.state.tr.split(view.state.doc.firstChild!.nodeSize+4)));
+  const doc=view.state.doc;
+  await advance(2000);fireEvent.click(ui.part(action)!);
+  expect(ui.calls.map(c=>c.method)).toEqual(["GET","PUT"]);
+  await act(async()=>pending.resolve(conflict));
+  expect(ui.calls.map(c=>[c.method,c.path])).toEqual([["GET",path],["PUT",draftPath],["GET",path],["POST",operationPath]]);
+  expect(ui.calls[3].body).toEqual({request_id:Q.slice(3),base_version:V,base_revision:1,parent_version:V,content:splitRaw});
+  expect(ui.root).toHaveAttribute("data-state","clean");expect(ui.root).toHaveAttribute("data-autosave","idle");
+  expect(ui.view().state.doc).toBe(doc);expect(ui.ready).toHaveBeenCalledTimes(1);expect(ui.written).toHaveBeenCalledTimes(1);
 });

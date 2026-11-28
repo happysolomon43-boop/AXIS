@@ -18,6 +18,7 @@ afterAll(async () => { await resetDb(pool); await pool.end(); });
 test("AC1 preserves legacy raw bytes and rejects invalid JSONB shapes", async () => {
   const { seriesId, bookId } = await seedSeries(pool, "usr_aa");
   const {chapter,version} = await createChapterWithFirstVersion(pool,"usr_aa",{id:bookId,series_id:seriesId},"base","draft_edit");
+  const other = await createChapterWithFirstVersion(pool,"usr_aa",{id:bookId,series_id:seriesId},"other","draft_edit");
   const content = "# North\r\n\r\nRiver.\n";
   await pool.query(await down());
   try {
@@ -25,10 +26,12 @@ test("AC1 preserves legacy raw bytes and rejects invalid JSONB shapes", async ()
     const before = await head();
     expect(await runMigrations(pool,directory)).toEqual([migration]);
     expect(await head()).toEqual(before.map(row=>({...row,editor_document:null})));
+    expect((await pool.query("SELECT data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='chapter_drafts' AND column_name='editor_document'")).rows).toEqual([{data_type:"jsonb",is_nullable:"YES",column_default:null}]);
     for (const bad of ["{}","null","[]"]) {
-      await expect(pool.query("UPDATE chapter_drafts SET editor_document=$1::jsonb",[bad])).rejects.toMatchObject({
+      await expect(pool.query("INSERT INTO chapter_drafts(chapter_id,base_version,content,revision,editor_document) VALUES($1,$2,'other',1,$3::jsonb)",[other.chapter.id,other.version.id,bad])).rejects.toMatchObject({
         code:"23514",constraint:"chapter_drafts_editor_document_shape"});
     }
+    expect(await head()).toEqual(before.map(row=>({...row,editor_document:null})));
   } finally { await runMigrations(pool,directory); }
 });
 test("AC2 populated down refuses atomically; immutable append clears the head",async()=>{

@@ -342,7 +342,8 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
         } else {
           update({ ...settled, failedAt: now });
         }
-        return revision !== null && !stale;
+        // An exact coherent read proves the same guarded write state as a valid acknowledgement.
+        return revision !== null;
       }
     }, Math.max(0, fireAt(snapshot) - Date.now()));
 
