@@ -11,6 +11,7 @@ function uuid(value: unknown): value is string {
 
 export function createParagraphIdentity(options?: DraftIdentityOptions): { initialize(doc: Node): Node; plugin: Plugin } {
   const stored = new Set<string>(), issued = new Set<string>();
+  const restoredIds = new Set(options?.restoredParagraphIds ?? []);
   let counter = 0, initialized = false;
   function allocate(count: number): string[] {
     if (options) {
@@ -20,7 +21,7 @@ export function createParagraphIdentity(options?: DraftIdentityOptions): { initi
         try { value = options.allocateUuid(); } catch { throw new ParagraphAllocationError(); }
         if (!uuid(value)) throw new ParagraphAllocationError();
         const uid = "dp_" + value;
-        if (stored.has(uid) || issued.has(uid) || fresh.has(uid) || options.restoredParagraphIds.includes(uid)) throw new ParagraphAllocationError();
+        if (stored.has(uid) || issued.has(uid) || fresh.has(uid) || restoredIds.has(uid)) throw new ParagraphAllocationError();
         fresh.add(uid);
       }
       for (const uid of fresh) issued.add(uid);

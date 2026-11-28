@@ -3,17 +3,19 @@ import "./autosave.css";
 import "./conflict.css";
 import "../styles/binder-sync.css";
 import "../styles/draft-snapshot.css";
+import "../styles/draft-identity.css";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Node } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
-import { captureSnapshot, getSnapshotCapture, getWorkingState, getDraftSync, getWriteReceipt, isDefiniteWriteFailure, putDraft, writeChapter } from "../api/endpoints";
+import { captureSnapshot, getSnapshotCapture, getEditorWorkingState, getDraftSync, getWriteReceipt, isDefiniteWriteFailure, putEditorDraft, writeChapter } from "../api/endpoints";
 import { ApiError } from "../api/http";
-import type { CaptureRequest, CaptureResult, ChapterSync, WorkingState, WriteOperation, WriteRequest, WriteResult } from "../api/types";
+import type { CaptureRequest, CaptureResult, ChapterSync, EditorWorkingState, EditorDocument, WriteOperation, WriteRequest, WriteResult } from "../api/types";
 import { syncChip } from "../binder/format";
 import { copy } from "../copy";
 import { Editor } from "../editor/Editor";
 import { ReasonTooltip } from "../components/ReasonTooltip";
-import { blocksFromServed, blocksToDoc, docToBlocks, serializeBlocks, sameContentDoc, type EditorBlock } from "../editor/model";
+import { blocksFromServed, blocksFromEditorDocument, blocksToDoc, editorDocumentToDoc, docToEditorDocument, sameEditorDocument, docToBlocks, serializeBlocks, sameContentDoc, type EditorBlock } from "../editor/model";
+import { createParagraphIdentity } from "../editor/paragraphIdentity";
 import { fireAt } from "./autosave";
 import { revision as validRevision, versionId } from "../api/validation";
 
@@ -35,6 +37,9 @@ type Phase = "saving" | "sending" | "checking" | "write-failed" | "check-failed"
 type Ready = {
   state: "ready";
   blocks: EditorBlock[];
+  preparedIdentity: ReturnType<typeof createParagraphIdentity>;
+  preparedDocument: Node;
+  confirmedEditorDocument: EditorDocument;
   baselineDoc: Node;
   baselineRaw: string;
   persistedRaw: string | null;
@@ -78,9 +83,13 @@ function hasDetail(error: ApiError, path: string, message?: string) {
 
 function dirty(s: Ready) { return !sameContentDoc(s.doc, s.baselineDoc); }
 function kept(s: Ready) { return s.persistedDoc !== null && sameContentDoc(s.doc, s.persistedDoc); }
-function due(s: Ready) { return s.persistedDoc === null ? dirty(s) : !kept(s); }
+function due(s: Ready) { return !sameEditorDocument(docToEditorDocument(s.doc), s.confirmedEditorDocument); }
+function rawForDoc(s: Ready, doc: Node) {
+  return s.persistedDoc && sameContentDoc(doc, s.persistedDoc) && s.persistedRaw !== null ? s.persistedRaw :
+    sameContentDoc(doc, s.baselineDoc) ? s.baselineRaw : serializeBlocks(docToBlocks(doc));
+}
 function locked(s: Snapshot) {
-  return s.state === "ready" && (s.capturing || s.phase !== null || (dirty(s) && !kept(s)));
+  return s.state === "ready" && (s.capturing || s.phase !== null || s.autosaveInFlight || due(s) || (dirty(s) && !kept(s)));
 }
 function busy(s: Ready) {
   return s.capturing || s.phase === "saving" || s.phase === "sending" || s.phase === "checking" || s.phase === "reloading";
@@ -109,18 +118,22 @@ function autosaveStatus(s: Ready) {
   return dirty(s) && kept(s) ? "saved" : "idle";
 }
 
-function fromRead(detail: WorkingState): Ready {
+function fromRead(detail: EditorWorkingState): Ready {
   const { draft, sync } = detail;
   if (detail.version === null) {
     // A real blank chapter has a first version. A versionless read cannot supply a guarded write base.
     throw new Error("Draft and chapter versions do not match");
   }
   const served = blocksFromServed(detail.blocks);
-  const blocks = draft === null ? served : blocksFromServed(draft.blocks);
+  if (typeof globalThis.crypto?.randomUUID !== "function") throw new Error("Secure identity allocation unavailable");
+  const restored = detail.editor_document;
+  const blocks = restored ? blocksFromEditorDocument(restored) : draft === null ? served : blocksFromServed(draft.blocks);
   const baselineDoc = blocksToDoc(served);
-  const doc = draft === null ? baselineDoc : blocksToDoc(blocks);
+  const preparedIdentity = createParagraphIdentity({mode:"draft", allocateUuid: () => globalThis.crypto.randomUUID(), restoredParagraphIds: restored?.map(item=>item.paragraph_id) ?? []});
+  const doc = preparedIdentity.initialize(restored ? editorDocumentToDoc(restored) : blocksToDoc(blocks));
+  const confirmedEditorDocument = docToEditorDocument(doc);
   return {
-    state: "ready", blocks, baselineDoc, doc, loadedVersionId: detail.version.id,
+    state: "ready", blocks, baselineDoc, doc, preparedIdentity, preparedDocument: doc, confirmedEditorDocument, loadedVersionId: detail.version.id,
     bookId: detail.chapter.book_id, conflictBase: null, competingDraft: false,
     baselineRaw: detail.version.content, persistedRaw: draft?.content ?? null, capturing: false,
     activeVersionId: detail.active_version_id, sync, phase: null, write: null, outcome: null,
@@ -133,6 +146,7 @@ function fromRead(detail: WorkingState): Ready {
 
 export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefreshToken = 0, onLockChange, onWritten, onEditorReady, onEditorDispose, onDocumentChange, pageOwnsText }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ state: "loading" });
+  const [identityFailed, setIdentityFailed] = useState(false);
   const current = useRef(snapshot);
   const [captureUI, setCaptureUI] = useState<CaptureUI>(initialCapture);
   const captureCurrent = useRef(captureUI);
@@ -228,9 +242,10 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     const number = ++generation.current;
     captureCurrent.current = initialCapture;
     setCaptureUI(initialCapture);
+    setIdentityFailed(false);
     update({ state: "loading" });
     try {
-      const detail = await getWorkingState(chapterId);
+      const detail = await getEditorWorkingState(chapterId);
       if (isCurrent(number)) update(fromRead(detail));
     } catch {
       if (isCurrent(number)) update({ state: "failed" });
@@ -270,7 +285,8 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
       if (!isCurrent(number) || ordinarySnapshot.current !== snapshot || current.current.state !== "ready") return;
       const end = beginOrdinary();
       const docSent = snapshot.doc;
-      const content = serializeBlocks(docToBlocks(docSent));
+      const documentSent = docToEditorDocument(docSent);
+      const content = rawForDoc(snapshot, docSent);
       const baseVersion = snapshot.loadedVersionId;
       const baseRevision = snapshot.headRevision;
       update({ ...current.current, autosaveInFlight: true, lastPutStartAt: Date.now() });
@@ -282,7 +298,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
         let stale = false;
         let syncReply: ChapterSync | undefined;
         try {
-          const result = await putDraft(chapterId, content, baseVersion, baseRevision);
+          const result = await putEditorDraft(chapterId, book, content, baseVersion, baseRevision, documentSent);
           if (result.chapter?.id === chapterId && result.chapter.book_id === book &&
               result.base_version === baseVersion && result.revision === baseRevision + 1 && validRevision(result.revision)) {
             revision = result.revision;
@@ -290,15 +306,16 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
           }
         } catch (error) {
           if (!isCurrent(number)) return false;
-          if (error instanceof ApiError && error.code === "conflict") {
+          if (error instanceof ApiError && error.status === 409 && error.code === "conflict") {
             stale = true;
             conflict = conflictBase(error);
             try {
-              const head = await getWorkingState(chapterId, book);
+              const head = await getEditorWorkingState(chapterId, book);
               syncReply = head.sync;
               const { draft } = head;
               if (head.version) conflict = { base_version: head.version.id, base_revision: draft?.revision ?? 0 };
-              if (draft !== null && draft.content === content && draft.base_version === baseVersion) {
+              if (draft !== null && draft.content === content && draft.base_version === baseVersion &&
+                  head.editor_document !== null && sameEditorDocument(head.editor_document, documentSent)) {
                 revision = draft.revision;
               }
             } catch {
@@ -318,7 +335,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
         }
         const settled = { ...s, autosaveInFlight: false, sync: syncReply ?? s.sync };
         if (revision !== null) {
-          const saved = { ...settled, headRevision: revision, persistedDoc: docSent, persistedRaw: content, failedAt: null };
+          const saved = { ...settled, headRevision: revision, persistedDoc: docSent, persistedRaw: content, confirmedEditorDocument: documentSent, failedAt: null };
           update(due(saved) ? { ...saved, dirtySince: now } : saved);
         } else if (stale) {
           update({ ...settled, stopped: true, conflictBase: conflict, persistedDoc: null, persistedRaw: null });
@@ -361,7 +378,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     }
     update(matches ? {
       ...s, loadedVersionId: result.version.id, activeVersionId: live.active_version_id, sync: live.sync,
-      baselineDoc: write.doc, baselineRaw: write.request.content, phase: null, write: null, outcome,
+      baselineDoc: write.doc, baselineRaw: write.request.content, confirmedEditorDocument: docToEditorDocument(write.doc), phase: null, write: null, outcome,
       headRevision: 0, persistedDoc: null, persistedRaw: null, stopped: false, conflictBase: null,
       competingDraft: false, reloadFailed: false, failedAt: null, lastPutStartAt: null,
     } : { ...s, phase: null, write: null, outcome, stopped: true, conflictBase: writeBase(result),
@@ -410,7 +427,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
       if (keepMine && latest.conflictBase === null) {
         // Establish the coordinates first. The next explicit choice can use them.
         try {
-          const result = await getWorkingState(chapterId, latest.bookId);
+          const result = await getEditorWorkingState(chapterId, latest.bookId);
           if (isCurrent(number) && result.version && current.current.state === "ready") {
             update({ ...current.current, phase: null,
               conflictBase: { base_version: result.version.id, base_revision: result.draft?.revision ?? 0 } });
@@ -483,7 +500,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     const number = ++generation.current;
     beginBusy({ ...s, reloadFailed: false }, "reloading", s.write, !inPlace);
     try {
-      const detail = await getWorkingState(chapterId, s.bookId);
+      const detail = await getEditorWorkingState(chapterId, s.bookId);
       if (!isCurrent(number)) return;
       if (inPlace && restoredVersionId !== undefined && (detail.version?.id !== restoredVersionId || detail.draft !== null)) {
         throw new Error("Restored Draft has advanced");
@@ -493,6 +510,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
       focusOnReady.current = !inPlace;
       const ui = captureCurrent.current;
       changeCapture({ ...initialCapture, status:ui.status, failure:ui.failure === copy["draft.snapshot.unconfirmed"] ? ui.failure : "" });
+      setIdentityFailed(false);
       update({ ...next, editorKey: number });
     } catch {
       if (!isCurrent(number)) return;
@@ -568,11 +586,11 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     const book = s.bookId;
     async function verifyBase() {
       try {
-        const detail = await getWorkingState(chapterId, book);
+        const detail = await getEditorWorkingState(chapterId, book);
         if (!currentAttempt() || detail.version === null || detail.version.content !== raw ||
             (detail.draft !== null && detail.draft.content !== raw)) return;
         const live = current.current;
-        if (live.state !== "ready") return;
+        if (live.state !== "ready" || (detail.draft !== null && (detail.editor_document === null || !sameEditorDocument(detail.editor_document, live.confirmedEditorDocument)))) return;
         const next = { ...live, loadedVersionId: detail.version.id, activeVersionId: detail.active_version_id,
           headRevision: detail.draft?.revision ?? 0, baselineRaw: raw,
           persistedDoc: detail.draft === null ? null : live.doc, persistedRaw: detail.draft === null ? null : raw };
@@ -635,7 +653,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     let next: Ready = s;
     if (result.draft_current) {
       next = { ...s, activeVersionId:result.active_version_id, sync:result.sync };
-      if (result.created_version) next = { ...next, loadedVersionId:result.version.id, baselineDoc:a.doc, baselineRaw:a.body.content,
+      if (result.created_version) next = { ...next, loadedVersionId:result.version.id, baselineDoc:a.doc, baselineRaw:a.body.content, confirmedEditorDocument:docToEditorDocument(a.doc),
         headRevision:0, persistedDoc:null, persistedRaw:null, failedAt:null, lastPutStartAt:null, outcome:null };
     } else next = { ...s, stopped:true };
     releaseCapture(a,next,{ ...initialCapture, status:copy["draft.snapshot.saved"], failure:result.draft_current ? "" : copy["draft.snapshot.conflict"], conflict:!result.draft_current });
@@ -736,10 +754,11 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
     if (s.state !== "ready" || busy(s)) return;
     onDocumentChange?.();
     const now = Date.now();
-    if (sameContentDoc(s.doc, doc)) {
-      // Keep actual operation generations but do not reset manuscript autosave clocks or status.
+    setIdentityFailed(false);
+    if (s.doc.eq(doc)) {
       const next = { ...s, doc };
       current.current = next;
+      ordinarySnapshot.current = next;
       setSnapshot(next);
       return;
     }
@@ -892,7 +911,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
         <ReasonTooltip anchor={snapshotReturn} active reason={captureReason} descriptionId={tooltipId+"-return"} />
       </>}
       <div className="ax-draft-page" data-part="page">
-        <Editor key={s.editorKey} blocks={s.blocks} editable={!isBusy} onDocChange={docChange} onReady={(view) => {
+        <Editor key={s.editorKey} blocks={s.blocks} preparedIdentity={s.preparedIdentity} preparedDocument={s.preparedDocument} onIdentityFailure={() => setIdentityFailed(true)} editable={!isBusy} onDocChange={docChange} onReady={(view) => {
           editor.current = view;
           const loaded = current.current;
           if (loaded.state === "ready" && loaded.editorKey === s.editorKey) {
@@ -909,6 +928,7 @@ export function Draft({ chapterId, reloadToken = 0, restoredVersionId, syncRefre
           callbacks.current.onEditorDispose?.(view);
         }} />
       </div>
+      {identityFailed && <p data-part="editor-identity-failure" className="ax-draft__identity-failure" role="alert" aria-live="polite" aria-atomic="true">{copy["draft.identityFailed"]}</p>}
     </section>
   );
 }
