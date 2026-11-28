@@ -124,5 +124,5 @@ test("AXB-0118 AC2: a failed label INSERT rolls back Restore, which lands once a
     try { await f.app.close(); } finally { await resetDb(pool); }
   }
   expect(await migrations()).toEqual(beforeMigrations);
-  expect(beforeMigrations).toHaveLength(17);
+  expect(beforeMigrations).toHaveLength(18);
 });
