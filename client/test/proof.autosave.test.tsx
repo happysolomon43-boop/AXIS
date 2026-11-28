@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../src/App";
-import type { ChapterDetail, DraftDetail, DraftHead, VersionDetail } from "../src/api/types";
+import type { ChapterDetail, DraftDetail, DraftHead, VersionDetail, EditorDocument } from "../src/api/types";
 import { a, chapterList, chapterPath, detailText, reply, verRow } from "./d06.fixtures";
 import { advance, chapterA, draftPath, edit, fakeClock } from "./draftFixtures";
 import { chapterA as binderChapter, chaptersPath, mockApi, seriesA, seriesPath, treeA } from "./helpers";
@@ -24,7 +24,7 @@ afterEach(() => vi.useRealTimers());
 
 test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writing a version", async () => {
   const versions: VersionDetail[] = [{ ...verRow(a, 1, null), content: "# Title\n\nOne" }];
-  const stored: DraftDetail = { chapter: chapterA, draft: null };
+  const stored: DraftDetail & {editor_document:EditorDocument|null} = { chapter: chapterA, draft: null,editor_document:null };
   const edited = "# Title\n\nOne!";
   const { calls } = mockApi([
     { method: "GET", path: seriesPath, reply: reply({ series: [seriesA] }) },
@@ -34,7 +34,7 @@ test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writin
       ...detailText, version: versions.at(-1)!, blocks: detailText.blocks.slice(0, 2), scenes: [],
     } satisfies ChapterDetail), () => reply(stored)),
     { method: "PUT", path: draftPath, reply: (call, n) => {
-      const { content, base_version, base_revision } = call.body as Pick<DraftHead, "content" | "base_version"> & { base_revision: number };
+      const { content, base_version, base_revision, editor_document } = call.body as Pick<DraftHead, "content" | "base_version"> & { base_revision: number;editor_document:EditorDocument };
       const current_version = versions.at(-1)!.id;
       const current_revision = stored.draft?.revision ?? 0;
       if (base_version !== current_version || base_revision !== current_revision) {
@@ -47,8 +47,8 @@ test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writin
         { ordinal: 1, kind: "heading", text: "Title" },
         { ordinal: 2, kind: "paragraph", text: content.slice("# Title\n\n".length) },
       ] satisfies DraftHead["blocks"];
-      stored.draft = { base_version, revision: base_revision + 1, content, blocks };
-      return n === 0 ? "network" : reply({ chapter: chapterA, base_version, revision: stored.draft.revision });
+      stored.draft = { base_version, revision: base_revision + 1, content, blocks };stored.editor_document=editor_document;
+      return n === 0 ? "network" : reply({ chapter: chapterA, base_version, revision: stored.draft.revision,sync:{state:"draft_only",same:false} });
     } },
     { method: "POST", path: /\/(versions|send)$/, reply: (call) => {
       const { content } = call.body as { content: string };
@@ -73,7 +73,7 @@ test("AXB-0050 AC2 adopts the stored draft after a lost PUT reply without writin
 
   const draftCalls = calls.filter(({ path }) => path === draftPath || path === workingPath(chapterPath));
   expect(draftCalls.map(({ method }) => method)).toEqual(["GET", "PUT", "PUT", "GET"]);
-  const input = { content: edited, base_version: a, base_revision: 0 };
+  const input = { content: edited, base_version: a, base_revision: 0,editor_document:[{kind:"heading",text:"Title",paragraph_id:null},{kind:"paragraph",text:"One!",paragraph_id:detailText.blocks[1].block_uid}] };
   expect(draftCalls[1].body).toEqual(input);
   expect(draftCalls[2].body).toEqual(input);
   expect(calls.filter(({ method }) => method === "POST")).toHaveLength(0);

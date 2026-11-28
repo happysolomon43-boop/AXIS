@@ -45,6 +45,9 @@ jobs:
       - name: Client regression and lost-reply probes
         working-directory: client
         run: npm test
+      - name: D21 client affected acceptance
+        working-directory: client
+        run: npm test -- editor-working-state.test.ts editor-draft-identity.test.ts draft-editor-document.test.tsx draft-paragraph-identity.test.tsx draft.pullback-base.test.tsx shell-compare-page.test.tsx
       - name: Client production build
         working-directory: client
         run: npm run build
@@ -54,11 +57,14 @@ jobs:
       - name: Server regression and earlier probes
         working-directory: server
         run: npm test
+      - name: D21 server affected acceptance
+        working-directory: server
+        run: npm test -- draft-editor-document.schema.test.ts draft-editor-document.test.ts draft-editor-document.api.test.ts proof.draft-editor-document.test.ts
       - name: Migration verification and isolated rollback
         working-directory: server
         run: |
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 16
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 17
           psql "$DATABASE_URL" -Atc 'SELECT row_to_json(named_cuts) FROM named_cuts' > "$RUNNER_TEMP/named_cuts-backup.jsonl"
           test "$(wc -l < "$RUNNER_TEMP/named_cuts-backup.jsonl" | tr -d ' ')" = "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM named_cuts')"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'TRUNCATE series CASCADE'
@@ -66,7 +72,7 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f"
           done
           npm run migrate
-          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 16
+          test "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM schema_migrations')" = 17
       - name: D06 live preview proxy smoke and graceful shutdown
         run: node .github/scripts/d06-smoke.mjs
       - name: D07 live preview proxy smoke and graceful shutdown

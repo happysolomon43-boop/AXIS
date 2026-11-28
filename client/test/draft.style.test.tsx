@@ -156,7 +156,7 @@ test("AXB-0081 AC2 reuses the exact shared chip rule and meets the room and rais
   `;
   expect(rule?.replace(/\s+/g, "")).toBe(expected.replace(/\s+/g, ""));
   const imports = Array.from(draftSource.matchAll(/^import "([^"]+\.css)";$/gm), ([, path]) => path);
-  expect(imports).toEqual(["./draft.css", "./autosave.css", "./conflict.css", "../styles/binder-sync.css", "../styles/draft-snapshot.css"]);
+  expect(imports).toEqual(["./draft.css", "./autosave.css", "./conflict.css", "../styles/binder-sync.css", "../styles/draft-snapshot.css", "../styles/draft-identity.css"]);
   for (const [text, room, raised] of [
     ["#4A4D52", "#ECEBE6", "#FCFCFA"],
     ["#A9A79F", "#0B0C0E", "#0E1012"],

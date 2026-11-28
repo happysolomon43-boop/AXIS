@@ -1,4 +1,4 @@
-import type { ChapterDetail, ChapterSync, DraftDetail, VersionWritten, WorkingState, WriteOperation, WriteResult } from "../src/api/types";
+import type { ChapterDetail, ChapterSync, DraftDetail, EditorDocument, EditorWorkingState, VersionWritten, WorkingState, WriteOperation, WriteResult } from "../src/api/types";
 import type { Call } from "./helpers";
 
 type Response = { status: number; body: unknown };
@@ -26,7 +26,10 @@ export function workingState(chapter: ChapterDetail, head?: Pick<DraftDetail, "d
 
 }
 
-export const workingPath = (path: string) => path + "/working-state";
+export const workingPath = (path: string) => path + "/working-state?view=editor-document";
+export function editorWorkingState(chapter: ChapterDetail, head?: Pick<DraftDetail, "draft" | "sync"> & {editor_document?: EditorDocument | null}): EditorWorkingState {
+  return {...workingState(chapter,head),editor_document:head?.editor_document ?? null};
+}
 
 export function workingRead(path: string, chapter: HandlerReply, head?: HandlerReply) {
   const reply = async (call: Call, n: number): Promise<Reply> => {
@@ -34,7 +37,7 @@ export function workingRead(path: string, chapter: HandlerReply, head?: HandlerR
     if (detail === "network" || detail.status !== 200 || !detail.body) return detail;
     const draft = typeof head === "function" ? await head(call, n) : head;
     if (draft === "network" || (draft && draft.status !== 200)) return draft;
-    const state = workingState(detail.body as ChapterDetail, draft?.body as DraftDetail | undefined);
+    const state = editorWorkingState(detail.body as ChapterDetail, draft?.body as (DraftDetail & {editor_document?:EditorDocument|null}) | undefined);
     if (draft && (!draft.body || typeof draft.body !== "object" || !("draft" in draft.body))) {
       return { status: 200, body: { ...state, draft: undefined } };
     }

@@ -1,0 +1,36 @@
+.ax-draft__identity-failure {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: var(--ax-z-shell);
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin: 0;
+  min-block-size: var(--ax-size-status-line);
+  padding-block: var(--ax-space-2);
+  padding-inline: var(--ax-space-6);
+  background: var(--ax-color-surface-shell);
+  color: var(--ax-color-text-primary);
+  border-block-start: 1px solid var(--ax-color-border-hair);
+  border-radius: 0;
+  box-shadow: none;
+  font-family: var(--ax-type-family-chrome);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .ax-draft__identity-failure {
+    font-size: 0.9375rem;
+    line-height: 1.375rem;
+  }
+}
+@media (forced-colors: active) {
+  .ax-draft__identity-failure {
+    background: Canvas;
+    color: CanvasText;
+    border-block-start-color: CanvasText;
+  }
+}

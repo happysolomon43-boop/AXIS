@@ -2,10 +2,31 @@ import { Fragment, type Node } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import { canonicalParagraphUid } from "./model";
 
-export function createParagraphIdentity(): { initialize(doc: Node): Node; plugin: Plugin } {
+export type DraftIdentityOptions = { mode: "draft"; allocateUuid: () => string; restoredParagraphIds: readonly (string | null)[] };
+export class ParagraphAllocationError extends Error {}
+
+function uuid(value: unknown): value is string {
+  return typeof value === "string" && value.length === 36 && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+}
+
+export function createParagraphIdentity(options?: DraftIdentityOptions): { initialize(doc: Node): Node; plugin: Plugin } {
   const stored = new Set<string>(), issued = new Set<string>();
+  const restoredIds = new Set(options?.restoredParagraphIds ?? []);
   let counter = 0, initialized = false;
   function allocate(count: number): string[] {
+    if (options) {
+      const fresh = new Set<string>();
+      for (let i=0; i<count; i++) {
+        let value: unknown;
+        try { value = options.allocateUuid(); } catch { throw new ParagraphAllocationError(); }
+        if (!uuid(value)) throw new ParagraphAllocationError();
+        const uid = "dp_" + value;
+        if (stored.has(uid) || issued.has(uid) || fresh.has(uid) || restoredIds.has(uid)) throw new ParagraphAllocationError();
+        fresh.add(uid);
+      }
+      for (const uid of fresh) issued.add(uid);
+      return [...fresh];
+    }
     if (count > Number.MAX_SAFE_INTEGER - counter) throw new Error("Paragraph identity exhausted");
     return Array.from({ length: count }, () => {
       const uid = "local_p_" + (++counter);
@@ -17,10 +38,13 @@ export function createParagraphIdentity(): { initialize(doc: Node): Node; plugin
     if (initialized) throw new Error("Paragraph identity already initialized");
     initialized = true;
     const children: Node[] = [];
-    doc.forEach(node => {
+    doc.forEach((node, _offset, index) => {
       if (node.type.name !== "paragraph") { children.push(node); return; }
       const uid = node.attrs.block_uid;
-      if (canonicalParagraphUid(uid) && !stored.has(uid)) { stored.add(uid); children.push(node); }
+      const restored = options?.restoredParagraphIds[index];
+      const admissible = canonicalParagraphUid(uid) && (!options?.restoredParagraphIds.length || restored === uid) ||
+        (!!options && typeof uid === "string" && uid.startsWith("dp_") && uuid(uid.slice(3)) && restored === uid);
+      if (admissible && !stored.has(uid)) { stored.add(uid); children.push(node); }
       else children.push(node.type.create({ ...node.attrs, block_uid: allocate(1)[0] }, node.content, node.marks));
     });
     return doc.copy(Fragment.fromArray(children));

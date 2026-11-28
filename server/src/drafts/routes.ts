@@ -31,6 +31,7 @@ export function registerDraftRoutes(app: FastifyInstance, { pool }: Deps): void 
             content: { type: "string" },
             base_version: { type: "string", minLength: 1, maxLength: 64 },
             base_revision: { type: "integer", minimum: 0, maximum: 2147483647 },
+            editor_document: {},
           },
         },
       },
@@ -38,7 +39,7 @@ export function registerDraftRoutes(app: FastifyInstance, { pool }: Deps): void 
     async (request) => {
       const chapter = await ownedChapter(pool, requireUser(request), request.params.id);
       checkContent(request.body.content);
-      return putDraft(pool, chapter, request.body);
+      return putDraft(pool, chapter, request.body, requireUser(request));
     },
   );
 
@@ -46,7 +47,10 @@ export function registerDraftRoutes(app: FastifyInstance, { pool }: Deps): void 
     const owner = requireUser(request);
     const { id } = request.params;
     if (id.length > 64 || id.includes("\u0000")) throw new AppError(404, "not_found", "Chapter not found");
-    return reply.header("Cache-Control", "no-store").send(await getWorkingState(pool, owner, id));
+    const url = request.raw.url ?? "";
+    const separator = url.indexOf("?");
+    const views = new URLSearchParams(separator === -1 ? "" : url.slice(separator + 1)).getAll("view");
+    return reply.header("Cache-Control", "no-store").send(await getWorkingState(pool, owner, id, views.length === 1 && views[0] === "editor-document"));
   });
 
   app.get<{ Params: Params }>(draftPath, async (request, reply) => {

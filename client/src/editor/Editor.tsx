@@ -9,31 +9,37 @@ import { baseKeymap } from "prosemirror-commands";
 import { history, undo, redo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { copy } from "../copy";
-import { blocksToDoc, type EditorBlock } from "./model";
-import { createParagraphIdentity } from "./paragraphIdentity";
+import { blocksToDoc, editorDocumentToDoc, type EditorBlock } from "./model";
+import type { EditorDocument } from "../api/types";
+import { createParagraphIdentity, ParagraphAllocationError, type DraftIdentityOptions } from "./paragraphIdentity";
 
 type Props = {
   blocks: EditorBlock[];
+  draftIdentity?: DraftIdentityOptions;
+  restoredDocument?: EditorDocument | null;
+  preparedIdentity?: ReturnType<typeof createParagraphIdentity>;
+  preparedDocument?: Node;
+  onIdentityFailure?: () => void;
   editable: boolean;
   onDocChange: (doc: Node) => void;
   onReady?: (view: EditorView) => void;
   onDispose?: (view: EditorView) => void;
 };
 
-export function Editor({ blocks, editable, onDocChange, onReady, onDispose }: Props) {
+export function Editor({ blocks, editable, onDocChange, onReady, onDispose, draftIdentity, restoredDocument, preparedIdentity, preparedDocument, onIdentityFailure }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const initial = useRef(blocks);
-  const callbacks = useRef({ onDocChange, onReady, onDispose });
-  callbacks.current = { onDocChange, onReady, onDispose };
+  const callbacks = useRef({ onDocChange, onReady, onDispose, onIdentityFailure });
+  callbacks.current = { onDocChange, onReady, onDispose, onIdentityFailure };
   const canEdit = useRef(editable);
   canEdit.current = editable;
 
   useLayoutEffect(() => {
-    const identity = createParagraphIdentity();
+    const identity = preparedIdentity ?? createParagraphIdentity(draftIdentity);
     const view = new EditorView(host.current!, {
       state: EditorState.create({
-        doc: identity.initialize(blocksToDoc(initial.current)),
+        doc: preparedDocument ?? identity.initialize(restoredDocument ? editorDocumentToDoc(restoredDocument) : blocksToDoc(initial.current)),
         plugins: [history(), keymap({ "Mod-z": undo, "Mod-y": redo, "Shift-Mod-z": redo }), keymap(baseKeymap), identity.plugin],
       }),
       editable: () => canEdit.current,
@@ -43,7 +49,13 @@ export function Editor({ blocks, editable, onDocChange, onReady, onDispose }: Pr
       },
       dispatchTransaction(transaction) {
         if (transaction.docChanged && (!canEdit.current || !view.editable)) return;
-        const applied = view.state.applyTransaction(transaction);
+        let applied: ReturnType<EditorState["applyTransaction"]>;
+        try { applied = view.state.applyTransaction(transaction); }
+        catch (error) {
+          if (!(error instanceof ParagraphAllocationError)) throw error;
+          callbacks.current.onIdentityFailure?.();
+          return;
+        }
         if (!applied.transactions.length) return;
         view.updateState(applied.state);
         if (applied.transactions.some(t => t.docChanged)) callbacks.current.onDocChange(applied.state.doc);

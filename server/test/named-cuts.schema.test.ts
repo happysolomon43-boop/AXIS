@@ -22,7 +22,7 @@ test("AXB-0091 AC1 down and reapply preserve predecessor data in one isolated tr
       await client.query(await readFile(new URL("../db/rollback/0014_snapshot_label_lifecycles.down.sql", import.meta.url), "utf8"));
       const migrationRows = async () => (await client.query("SELECT filename FROM schema_migrations ORDER BY filename")).rows;
       const original = await migrationRows();
-      expect(original).toHaveLength(14);
+      expect(original).toHaveLength(15);
       const definitions = async () => (await client.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='named_cuts'::regclass ORDER BY definition")).rows;
       const expected = await definitions();
       const reapply = async () => { await client.query(up); await client.query("INSERT INTO schema_migrations(filename) VALUES($1)", [filename]); };

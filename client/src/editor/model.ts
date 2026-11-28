@@ -1,5 +1,5 @@
 import { Schema, type Node } from "prosemirror-model";
-import type { BlockRow, DraftBlock, WorkingDraftBlock } from "../api/types";
+import type { BlockRow, DraftBlock, WorkingDraftBlock, EditorDocument } from "../api/types";
 import { copy } from "../copy";
 
 export type EditorBlock = { kind: "paragraph" | "heading" | "scene_break"; text: string; block_uid?: string | null };
@@ -72,4 +72,27 @@ export function sameContentDoc(a: Node, b: Node): boolean {
     else return false;
   }
   return true;
+}
+
+export function blocksFromEditorDocument(document: EditorDocument): EditorBlock[] {
+  return document.map(({kind,text,paragraph_id}) => kind === "paragraph" ? {kind,text,block_uid:paragraph_id} : {kind,text});
+}
+
+export function editorDocumentToDoc(document: EditorDocument): Node {
+  return schema.nodes.doc.create(null, document.map(({kind,text,paragraph_id}) =>
+    kind === "scene_break" ? schema.nodes.scene_break.create({text}) :
+      schema.nodes[kind].create(kind === "paragraph" ? {block_uid:paragraph_id} : null, text ? schema.text(text) : null)));
+}
+
+export function docToEditorDocument(doc: Node): EditorDocument {
+  const result: EditorDocument = [];
+  doc.forEach(node => {
+    const kind = node.type.name as EditorBlock["kind"];
+    result.push({kind,text:kind === "scene_break" ? node.attrs.text : node.textContent,paragraph_id:kind === "paragraph" ? node.attrs.block_uid : null});
+  });
+  return result;
+}
+
+export function sameEditorDocument(a: EditorDocument, b: EditorDocument): boolean {
+  return a.length === b.length && a.every((item,i) => item.kind === b[i]!.kind && item.text === b[i]!.text && item.paragraph_id === b[i]!.paragraph_id);
 }

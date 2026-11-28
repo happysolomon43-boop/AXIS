@@ -28,7 +28,7 @@ test("AC1 keeps the same Draft, backwards selection, document, undo history and 
   const two = { ...working, draft: { ...working.draft!, content: `${head}\n\n${second}`, blocks: [
     ...working.draft!.blocks, { ordinal: 2, kind: "paragraph", text: second, block_uid: null },
   ] } };
-  const { calls } = mockApi([{ method: "GET", path: chapterPath + "/working-state", reply: ok(two) }, ...proofRoutes, ...pairReads]);
+  const { calls } = mockApi([{ method: "GET", path: chapterPath + "/working-state?view=editor-document", reply: ok(two) }, ...proofRoutes, ...pairReads]);
   const { container } = render(<Shell tree={treeA} />);
   const view = await openDraft(container);
   act(() => {
@@ -80,7 +80,7 @@ test("AC1 keeps the same Draft, backwards selection, document, undo history and 
 
 test("AC2 live guards reject composition, absent view and locked Draft before any comparison read", async () => {
   const held = deferred<ReturnType<typeof ok>>();
-  const { calls } = mockApi([{ method: "GET", path: chapterPath + "/working-state", reply: () => held.promise }, ...proofRoutes]);
+  const { calls } = mockApi([{ method: "GET", path: chapterPath + "/working-state?view=editor-document", reply: () => held.promise }, ...proofRoutes]);
   const { container } = render(<Shell tree={treeA} />);
   fireEvent.click(await screen.findByRole("button", { name: /Open Chapter 1/ }));
   const compare = await compareEntry(container);
@@ -140,7 +140,7 @@ test("AC4 an accepted chapter switch discards the read and leaves the next chapt
   const pending = deferred<ReturnType<typeof ok>>();
   const { calls } = mockApi([
     { method: "GET", path: chaptersPath, reply: ok({ chapters: [binderChapter, { ...binderChapter, ...other, title: "Beyond the ash" }] }) },
-    { method: "GET", path: `/api/chapters/${other.id}/working-state`, reply: ok(next) },
+    { method: "GET", path: `/api/chapters/${other.id}/working-state?view=editor-document`, reply: ok(next) },
     { method: "GET", path: textPath(v1), reply: () => pending.promise },
     ...proofRoutes, pairReads[1],
   ]);

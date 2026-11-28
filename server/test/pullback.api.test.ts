@@ -84,7 +84,7 @@ test("AC1 applies, rolls back and reapplies migration 0011 and constrains the ma
     "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'chapter_pullbacks'::regclass AND contype = 'p'",
   );
   expect(key).toEqual({ definition: "PRIMARY KEY (chapter_id)" });
-  expect((await migrationRows()).rows).toHaveLength(16);
+  expect((await migrationRows()).rows).toHaveLength(17);
   const first = await create();
   const second = await create();
   await pool.query("INSERT INTO chapter_pullbacks VALUES ($1, $2)", [first.chapter.id, first.version.id]);
@@ -93,11 +93,11 @@ test("AC1 applies, rolls back and reapplies migration 0011 and constrains the ma
   try {
     expect((await table()).rows).toEqual([{ name: null }]);
     const { rows } = await migrationRows();
-    expect(rows).toHaveLength(15);
+    expect(rows).toHaveLength(16);
     expect(rows).not.toContainEqual({ filename: migration });
     await expect(runMigrations(pool, migrationDir)).resolves.toEqual([migration]);
     expect((await table()).rows).toEqual([{ name: "chapter_pullbacks" }]);
-    expect((await migrationRows()).rows).toHaveLength(16);
+    expect((await migrationRows()).rows).toHaveLength(17);
     expect(await marks()).toEqual([]);
     await expect(pool.query("INSERT INTO chapter_pullbacks VALUES ($1, $2)", [first.chapter.id, second.version.id]))
       .rejects.toMatchObject({ code: "23503" });
@@ -196,7 +196,7 @@ test("AXB-0129 AC1 preserves an inert version, hints and every active coordinate
   expect((await pool.query("SELECT pov_hint,location_hint,time_hint,time_mode FROM scenes WHERE version_id=$1",[after.latest.id])).rows).toEqual([{pov_hint:"Mara",location_hint:null,time_hint:null,time_mode:"linear"}]);
   const history=await app.inject({method:"GET",url:"/chapters/"+A+"/history",headers:owner});
   expect(history.statusCode).toBe(200);expect(history.json()).toMatchObject({active_version_id:V,versions:[{id:after.latest.id,source:"draft_edit",snapshot:null,can_name_snapshot:false},{id:V}]});
-  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows[0].count).toBe(16);
+  expect((await pool.query("SELECT count(*)::int AS count FROM schema_migrations")).rows[0].count).toBe(17);
 });
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return {resolve,promise};}
 async function ordered(first:()=>PromiseLike<unknown>,second:()=>PromiseLike<unknown>){
@@ -277,7 +277,7 @@ test("AXB-0129 AC4 whichever cooperating writer acquires the Series lock first w
   await seedD18();
   const [written,denied]=await ordered(put,guarded);
   expect(written.statusCode).toBe(200);expect(denied.statusCode).toBe(409);expect(denied.json()).toEqual(conflict("base_choice_required"));
-  expect((await snapshot()).head).toEqual([{chapter_id:A,base_version:V,revision:2,content:"river B"}]);
+  expect((await snapshot()).head).toEqual([{chapter_id:A,base_version:V,revision:2,content:"river B",editor_document:null}]);
   await seedD18();
   const [landed,stale]=await ordered(guarded,put);assertSuccess(landed);
   expect(stale.statusCode).toBe(409);expect(stale.json().error).toMatchObject({code:"conflict",details:{reason:"version",current_version:(await latest()).id,current_revision:0}});

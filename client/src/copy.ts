@@ -68,6 +68,7 @@ export const copy = {
   "draft.keepMine": "Keep mine as a new version",
   "draft.reloading": "Reloading the chapter.",
   "draft.reloadFailed": "The latest version could not be read. Your text is still here.",
+  "draft.identityFailed": "The edit could not be applied. Your draft is unchanged.",
   "draft.autosaveFailed": "The draft could not be saved.",
   "draft.unsaved": "Unsaved changes. Save or send before opening another chapter.",
   "draft.saved": "Version saved.",

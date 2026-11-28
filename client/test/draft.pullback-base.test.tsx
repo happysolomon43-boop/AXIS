@@ -19,7 +19,7 @@ async function mount(chapter:Handler["reply"],draft:Handler["reply"],put:Handler
 afterEach(()=>{if(vi.isFakeTimers())vi.clearAllTimers();vi.useRealTimers();});
 test("AXB-0133 AC1/2 clean metadata adopts V2 and exact null or equal head revision without remount",async()=>{
  for(const revision of [0,3]){
- const ui=await mount(reply(nextDetail),reply(nextHead(revision)));fakeClock();const view=ui.view;
+ const ui=await mount(reply(nextDetail),reply({...nextHead(revision),editor_document:revision===0?null:[{kind:"paragraph",text:"River.",paragraph_id:"b_00000000000a"}]}));fakeClock();const view=ui.view;
  act(()=>view.focus());const doc=view.state.doc,selection=view.state.selection,depth=undoDepth(view.state),focus=document.activeElement;
  await act(async()=>ui.token(1));expect(ui.onEditorReady).toHaveBeenCalledTimes(1);expect(view.state.doc).toBe(doc);expect(view.state.selection.eq(selection)).toBe(true);expect(undoDepth(view.state)).toBe(depth);expect(document.activeElement).toBe(focus);expect(ui.root).toHaveAttribute("data-state","clean");expect(ui.calls.filter(c=>c.method==="GET"&&c.path===workingPath(chapterPath))).toHaveLength(2);expect(ui.calls.filter(c=>c.method==="GET"&&c.path===draftPath)).toHaveLength(0);
  edit(view);await advance(2000);expect(ui.calls.find(c=>c.method==="PUT")?.body).toMatchObject({base_version:V2,base_revision:revision,content:"River.!"});ui.unmount();vi.clearAllTimers();vi.useRealTimers();
@@ -55,7 +55,7 @@ test("D19 preserves D18 generation invalidation after typing and undo restore cl
   expect(ui.view.state.doc.eq(initial)).toBe(true);expect(ui.root).toHaveAttribute("data-state","clean");
   await act(async()=>pending.resolve(reply(nextDetail)));
   edit(ui.view);await advance(2000);
-  expect(ui.calls.find(c=>c.method==="PUT")?.body).toEqual({content:"River.!",base_version:V,base_revision:1});
+  expect(ui.calls.find(c=>c.method==="PUT")?.body).toEqual({content:"River.!",base_version:V,base_revision:1,editor_document:expect.any(Array)});
   expect(ui.onEditorReady).toHaveBeenCalledTimes(1);
  }finally{ui.unmount();vi.clearAllTimers();vi.useRealTimers();}
 });
