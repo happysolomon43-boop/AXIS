@@ -1,4 +1,4 @@
-import type { ChapterHistory, ChapterListItem, HistoryItem, VersionText, EditorWorkingState } from "../src/api/types";
+import type { ChapterHistory, ChapterListItem, HistoryItem, VersionText, EditorLineageState } from "../src/api/types";
 import type { VersionSource } from "../src/api/validation";
 import { chapterA, chaptersPath, createdChapter } from "./helpers";
 import { histA, histB, histC } from "./historyFixtures";
@@ -22,7 +22,7 @@ export const choices = rows.map(({ id, chapter_id, version_no, source, at, l_seq
   ({ id, chapter_id, version_no, source, at, l_seq }));
 export const history: ChapterHistory = { chapter, versions: rows, active_version_id: v2 };
 export const head = "Keep my line.";
-export const working: EditorWorkingState = {
+export const working: EditorLineageState = {
   chapter, version: { ...versionFields(rows[0]), content: "" }, active_version_id: v2, blocks: [], scenes: [],
   draft: { base_version: v3, revision: 1, content: head,
     blocks: [{ ordinal: 1, kind: "paragraph", text: head, block_uid: null }] },

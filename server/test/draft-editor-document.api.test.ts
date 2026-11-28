@@ -34,13 +34,13 @@ test("write AC1/2 and read AC1/2 keep exact document, bytes and inherited projec
   const first=await put(body());expect(first.statusCode,first.body).toBe(200);
   expect(Object.keys(first.json()).sort()).toEqual(["base_version","chapter","revision","sync"]);
   expect(first.json().revision).toBe(1);
-  expect(await row()).toEqual({chapter_id:id,base_version:base,revision:1,content,editor_document:document});
+  expect(await row()).toEqual({chapter_id:id,base_version:base,revision:1,content,editor_document:document,paragraph_lineage:null});
   const read=await get();expect(read.statusCode).toBe(200);expect(read.headers["cache-control"]).toBe("no-store");
   expect(Object.keys(read.json()).sort()).toEqual(["active_version_id","blocks","chapter","draft","editor_document","scenes","sync","version"]);
   expect(read.json()).toMatchObject({editor_document:document,draft:{content,revision:1,base_version:base},sync:first.json().sync});
   expect((await get("/working-state?view=%65ditor-document")).json()).toEqual(read.json());
   const repeated=await put(body());expect(repeated.statusCode).toBe(409);expect(repeated.json().error.details).toEqual({reason:"revision",current_version:base,current_revision:1});
-  expect(await row()).toEqual({chapter_id:id,base_version:base,revision:1,content,editor_document:document});
+  expect(await row()).toEqual({chapter_id:id,base_version:base,revision:1,content,editor_document:document,paragraph_lineage:null});
   for(const suffix of ["/working-state","/working-state?view=","/working-state?view=other","/working-state?view=editor-document&view=editor-document"]){
     const legacy=await get(suffix);expect(legacy.statusCode).toBe(200);expect(Object.keys(legacy.json()).sort()).toEqual(["active_version_id","blocks","chapter","draft","scenes","sync","version"]);
   }

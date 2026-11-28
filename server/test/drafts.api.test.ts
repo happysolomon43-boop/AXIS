@@ -65,7 +65,7 @@ test("AC1 creates and updates the head without recording any version or input", 
   expect(first.statusCode, first.body).toBe(200);
   expect(first.json()).toEqual({ chapter: { ...chapter, order_key: "0000001000" }, base_version: version.id, revision: 1, sync: { state: "draft_only", same: false } });
   expect((await pool.query("SELECT * FROM chapter_drafts")).rows).toEqual([
-    { chapter_id: chapter.id, base_version: version.id, content: edited, revision: 1, editor_document: null },
+    { chapter_id: chapter.id, base_version: version.id, content: edited, revision: 1, editor_document: null, paragraph_lineage: null },
   ]);
 
   const second = await put(body("", 1));
