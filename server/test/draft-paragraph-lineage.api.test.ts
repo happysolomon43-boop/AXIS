@@ -113,3 +113,13 @@ test("AC4 exact projection selection and null states, corrupt metadata fails clo
   expect((await get("/working-state?view=editor-document")).statusCode).toBe(200);
   expect(await state(pool)).toEqual(before);
 });
+
+test("concurrent guarded heads admit exactly one complete pair",async()=>{
+  expect((await put(body())).statusCode).toBe(200);
+  const before=await state(pool),attempts=[joined(1),{...body(1),paragraph_lineage:[]}];
+  const results=await Promise.all(attempts.map(x=>put(x)));
+  expect(results.map(x=>x.statusCode).sort()).toEqual([200,409]);
+  const winner=attempts[results.findIndex(x=>x.statusCode===200)];
+  expect(await row()).toMatchObject({content:winner.content,revision:2,editor_document:winner.editor_document,paragraph_lineage:winner.paragraph_lineage.length?winner.paragraph_lineage:null});
+  const after=await state(pool);expect({...after,heads:[]}).toEqual({...before,heads:[]});
+});
