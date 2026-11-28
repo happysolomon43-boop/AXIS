@@ -1,4 +1,5 @@
-import type { ChapterDetail, ChapterRow, ChapterSync, WorkingDraftHead, VersionBlock, VersionRow, WorkingState } from "./types";
+import { serializeBlocks } from "../editor/model";
+import type { EditorDocument, EditorWorkingState, ChapterDetail, ChapterRow, ChapterSync, WorkingDraftHead, VersionBlock, VersionRow, WorkingState } from "./types";
 
 export function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -123,4 +124,37 @@ export function validWorkingState(value: unknown, expectedChapter: string): valu
     seen.add(b.block_uid);
   }
   return true;
+}
+
+export function editorParagraphId(value: unknown): value is string {
+  return matches(value, /^b_[0-9a-f]{12}$/, 14) ||
+    (typeof value === "string" && value.startsWith("dp_") && uuidV4(value.slice(3)));
+}
+
+export function validEditorDocument(value: unknown, content: string, segmented: readonly VersionBlock[]): value is EditorDocument {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 1_000_000) return false;
+  const seen = new Set<string>();
+  let length = 0;
+  for (const item of value) {
+    if (!exactObject(item, ["kind", "text", "paragraph_id"]) ||
+        (item.kind !== "paragraph" && item.kind !== "heading" && item.kind !== "scene_break") ||
+        typeof item.text !== "string" || /[\u0000\uD800-\uDFFF]/u.test(item.text)) return false;
+    for (const _scalar of item.text) if (++length > 1_000_000) return false;
+    if (item.kind === "paragraph") {
+      if (!editorParagraphId(item.paragraph_id) || seen.has(item.paragraph_id)) return false;
+      seen.add(item.paragraph_id);
+    } else if (item.paragraph_id !== null) return false;
+    if (item.kind === "scene_break" && item.text !== "---" && item.text !== "***" && item.text !== "* * *") return false;
+  }
+  const document = value as EditorDocument;
+  return serializeBlocks(document) === content ||
+    (segmented.length === 0 ? document.length === 1 && document[0]!.kind === "paragraph" && document[0]!.text === "" :
+      segmented.length === document.length && segmented.every((block, i) => block.kind === document[i]!.kind && block.text === document[i]!.text));
+}
+
+export function validEditorWorkingState(value: unknown, expectedChapter: string): value is EditorWorkingState {
+  if (!exactObject(value, ["chapter","version","active_version_id","blocks","scenes","draft","sync","editor_document"])) return false;
+  const {editor_document, ...legacy} = value;
+  return validWorkingState(legacy, expectedChapter) &&
+    (editor_document === null || (legacy.draft !== null && validEditorDocument(editor_document, legacy.draft.content, legacy.draft.blocks)));
 }

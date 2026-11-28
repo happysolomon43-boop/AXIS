@@ -105,6 +105,8 @@ export type DraftDetail = { chapter: ChapterRow; draft: DraftHead | null; sync?:
 export type WorkingDraftBlock = DraftBlock & { block_uid: string | null };
 export type WorkingDraftHead = Omit<DraftHead, "blocks"> & { blocks: WorkingDraftBlock[] };
 export type WorkingState = ChapterDetail & { draft: WorkingDraftHead | null; sync: ChapterSync };
+export type EditorDocument = { kind: DraftBlock["kind"]; text: string; paragraph_id: string | null }[];
+export type EditorWorkingState = WorkingState & { editor_document: EditorDocument | null };
 export type DraftWritten = { chapter: ChapterRow; base_version: string; revision: number; sync?: ChapterSync };
 
 export type VersionBlock = Pick<BlockRow, "ordinal" | "kind" | "text">;
