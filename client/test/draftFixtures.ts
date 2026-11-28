@@ -31,7 +31,7 @@ function head(base_version: string, revision: number, lastText: string) {
 export const draftHeadB = head(b, 1, "Two!");
 export const draftHeadOther = head(b, 1, "Other");
 export const draftHeadD = head(d, 2, "Two?");
-export const putOk = (revision: number): DraftWritten => ({ chapter: chapterA, base_version: b, revision });
+export const putOk = (revision: number): DraftWritten => ({ chapter: chapterA, base_version: b, revision, sync: { state: "draft_only", same: false } });
 export const conflictEnvelope = reply({
   error: {
     code: "conflict",

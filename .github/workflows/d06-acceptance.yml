@@ -45,6 +45,9 @@ jobs:
       - name: Client regression and lost-reply probes
         working-directory: client
         run: npm test
+      - name: D21 client affected acceptance
+        working-directory: client
+        run: npm test -- editor-working-state.test.ts editor-draft-identity.test.ts draft-editor-document.test.tsx draft-paragraph-identity.test.tsx draft.pullback-base.test.tsx shell-compare-page.test.tsx
       - name: Client production build
         working-directory: client
         run: npm run build
