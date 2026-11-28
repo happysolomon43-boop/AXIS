@@ -93,7 +93,7 @@ test("AC1 applies, rolls back and reapplies migration 0011 and constrains the ma
   try {
     expect((await table()).rows).toEqual([{ name: null }]);
     const { rows } = await migrationRows();
-    expect(rows).toHaveLength(16);
+    expect(rows).toHaveLength(17);
     expect(rows).not.toContainEqual({ filename: migration });
     await expect(runMigrations(pool, migrationDir)).resolves.toEqual([migration]);
     expect((await table()).rows).toEqual([{ name: "chapter_pullbacks" }]);
