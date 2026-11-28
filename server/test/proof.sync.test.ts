@@ -16,7 +16,7 @@ async function waitForWriters(expected: number) {
   while (Date.now() < deadline) {
     const { rows } = await pool.query<{ pid: number }>(
       `SELECT pid FROM pg_stat_activity WHERE datname = current_database()
-       AND wait_event_type = 'Lock' AND query = 'SELECT id FROM series WHERE id = $1 FOR NO KEY UPDATE'`,
+       AND wait_event_type = 'Lock' AND query IN ('SELECT id FROM series WHERE id = $1 FOR NO KEY UPDATE', 'SELECT owner_id FROM series WHERE id = $1 FOR NO KEY UPDATE')`,
     );
     if (rows.length === expected) return;
     await delay(10);
