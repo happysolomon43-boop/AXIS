@@ -25,10 +25,11 @@ type Handler=Parameters<typeof mockApi>[0][number];
 export function mount(read:Handler["reply"],put?:Handler["reply"],extra:Handler[]=[]){
   const ready=vi.fn<(v:EditorView)=>void>(),lock=vi.fn(),written=vi.fn();
   const api=mockApi([{method:"GET",path,reply:read},...(put?[{method:"PUT",path:draftPath,reply:put}]:[]),...extra]);
-  const ui=render(<Draft chapterId={A} onEditorReady={ready} onLockChange={lock} onWritten={written}/>);
+  const element=(token:number)=><Draft chapterId={A} syncRefreshToken={token} onEditorReady={ready} onLockChange={lock} onWritten={written}/>;
+  const ui=render(element(0));
   const root=ui.container.querySelector<HTMLElement>('[data-surface="draft"]')!;
   const part=(name:string)=>root.querySelector<HTMLElement>('[data-part="'+name+'"]');
-  return {...api,...ui,root,part,ready,lock,written,view:()=>ready.mock.calls.at(-1)![0],loaded:()=>waitFor(()=>expect(ready).toHaveBeenCalledTimes(1))};
+  return {...api,...ui,root,part,ready,lock,written,token:(n:number)=>ui.rerender(element(n)),view:()=>ready.mock.calls.at(-1)![0],loaded:()=>waitFor(()=>expect(ready).toHaveBeenCalledTimes(1))};
 }
 export function splitAt(v:EditorView){act(()=>v.dispatch(v.state.tr.split(v.state.doc.firstChild!.nodeSize+4)));}
 export function joinAt(v:EditorView){act(()=>v.dispatch(v.state.tr.join(v.state.doc.firstChild!.nodeSize+v.state.doc.child(1).nodeSize)));}

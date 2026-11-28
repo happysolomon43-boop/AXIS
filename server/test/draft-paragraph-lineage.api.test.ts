@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createChapterWithFirstVersion } from "../src/corpus/repo.js";
+import { randomUUID } from "node:crypto";
 import { makePool, resetDb } from "./helpers.js";
 import { seedSeries } from "./seed.js";
 import { state } from "./namedCutsFixtures.js";
@@ -122,4 +123,30 @@ test("concurrent guarded heads admit exactly one complete pair",async()=>{
   const winner=attempts[results.findIndex(x=>x.statusCode===200)];
   expect(await row()).toMatchObject({content:winner.content,revision:2,editor_document:winner.editor_document,paragraph_lineage:winner.paragraph_lineage.length?winner.paragraph_lineage:null});
   const after=await state(pool);expect({...after,heads:[]}).toEqual({...before,heads:[]});
+});
+
+test.each(["versions","send","snapshots","restore","keep-mine"] as const)("D22 head shares the guarded immutable clear boundary: %s",async action=>{
+  expect((await put(body())).statusCode).toBe(200);
+  const admitted=await state(pool);
+  const post=(payload:object)=>app.inject({method:"POST",url:"/chapters/"+id+"/"+action,headers:owner,payload});
+  const request_id=randomUUID();
+  const content=action==="keep-mine"?"Local text.":rawSplit;
+  const payload=action==="restore"?{request_id,version_id:base}:
+    {request_id,content,base_version:base,base_revision:1,...(action==="snapshots"?{}:{parent_version:base})};
+  if(action!=="restore"){
+    const stale=await post({...payload,base_revision:0});
+    expect(stale.statusCode,stale.body).toBe(409);
+    expect(await state(pool)).toEqual(admitted);
+  }
+  const written=await post(payload);
+  expect(written.statusCode,written.body).toBe(201);
+  const after=await state(pool);
+  expect(after.heads).toEqual([]);
+  expect(after.versions.length).toBeGreaterThan(admitted.versions.length);
+  expect(after.versions.every(v=>!("editor_document" in v)&&!("paragraph_lineage" in v))).toBe(true);
+  const read=await get();expect(read.statusCode,read.body).toBe(200);
+  expect(read.json()).toMatchObject({draft:null,editor_document:null,paragraph_lineage:null});
+  const stale=await put({...body(1),paragraph_lineage:null});
+  expect(stale.statusCode).toBe(409);expect(stale.json().error.details.reason).toBe("version");
+  expect(await state(pool)).toEqual(after);
 });
