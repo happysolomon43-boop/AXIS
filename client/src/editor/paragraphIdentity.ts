@@ -13,7 +13,7 @@ function uuid(value: unknown): value is string {
 }
 
 const normalizeMeta="axisDraftParagraphLineageNormalize";
-const repairMeta=Symbol("axisDraftParagraphIdentityRepair");
+const repairMeta="axisDraftParagraphIdentityRepair";
 type Event =
   | {kind:"split"; first:number; second:number; transaction:number; step:number}
   | {kind:"merge"; first:number; absorbed:string; transaction:number; step:number};
@@ -38,7 +38,7 @@ function structuralEvents(transactions:readonly Transaction[]):Event[] {
         a.nodeSize+b.nodeSize===at.parent.nodeSize+2){
         events.push({kind:"split",first,second,transaction,step:i});
       }
-    }else if(step.to===step.from+2&&step.slice.size===0&&after.childCount===before.childCount-1){
+    }else if(step.to===step.from+2&&step.slice.content.size===0&&step.slice.openStart===0&&step.slice.openEnd===0&&after.childCount===before.childCount-1){
       const boundary=before.resolve(step.from+1);
       if(boundary.depth!==0||boundary.nodeBefore?.type.name!=="paragraph"||boundary.nodeAfter?.type.name!=="paragraph")return;
       const first=boundary.pos-boundary.nodeBefore.nodeSize;
