@@ -121,6 +121,7 @@ test("concurrent guarded heads admit exactly one complete pair",async()=>{
   const results=await Promise.all(attempts.map(x=>put(x)));
   expect(results.map(x=>x.statusCode).sort()).toEqual([200,409]);
   const winner=attempts[results.findIndex(x=>x.statusCode===200)];
+  if(!winner)throw new Error("No admitted competing request");
   expect(await row()).toMatchObject({content:winner.content,revision:2,editor_document:winner.editor_document,paragraph_lineage:winner.paragraph_lineage.length?winner.paragraph_lineage:null});
   const after=await state(pool);expect({...after,heads:[]}).toEqual({...before,heads:[]});
 });
